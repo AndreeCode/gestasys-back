@@ -7,7 +7,7 @@ from ....core.db.rows import from_row
 from ..domain.backup_domain import Backup
 
 SELECT_BACKUP = """
-SELECT b.id, b.kind::text AS kind, b.status::text AS status, b.file_name, b.size_bytes, b.tables, b.priority,
+SELECT b.id, b.kind::text AS kind, b.status::text AS status, b.file_name, b.size_bytes, b.sha256, b.tables, b.priority,
        b.error, b.created_by, u.full_name AS created_by_name, b.started_at, b.finished_at
 FROM backups b
 LEFT JOIN users u ON u.id = b.created_by
@@ -58,10 +58,11 @@ class BackupRepository:
             created_by,
         )
 
-    async def finish(self, conn, backup_id: UUID, status: str, file_name, size_bytes, error) -> None:
+    async def finish(self, conn, backup_id: UUID, status: str, file_name, size_bytes, error, sha256=None) -> None:
         await conn.execute(
             """
-            UPDATE backups SET status = $2::backup_status, file_name = $3, size_bytes = $4, error = $5, finished_at = NOW()
+            UPDATE backups SET status = $2::backup_status, file_name = $3, size_bytes = $4, error = $5,
+                   sha256 = $6, finished_at = NOW()
             WHERE id = $1
             """,
             backup_id,
@@ -69,6 +70,7 @@ class BackupRepository:
             file_name,
             size_bytes,
             error,
+            sha256,
         )
 
     async def old_automatic(self, conn: asyncpg.Connection, keep: int) -> list[Backup]:

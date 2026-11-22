@@ -38,8 +38,9 @@ class BackupHandler:
 
     async def download(self, backup_id: str):
         backup = await backupService.get_by_id(parse_uuid(backup_id, "backup_id"))
-        path = backupService.file_path(backup)
-        return FileResponse(path, filename=path.name, media_type="application/octet-stream")
+        path = await backupService.verified_file_path(backup)
+        headers = {"X-Checksum-SHA256": backup.sha256.strip()} if backup.sha256 else None
+        return FileResponse(path, filename=path.name, media_type="application/octet-stream", headers=headers)
 
     async def delete(self, backup_id: str):
         await backupService.delete(parse_uuid(backup_id, "backup_id"))

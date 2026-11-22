@@ -15,6 +15,7 @@ class Backup:
     status: str
     file_name: Optional[str] = None
     size_bytes: Optional[int] = None
+    sha256: Optional[str] = None
     tables: list[str] = field(default_factory=list)
     priority: str = "high"
     error: Optional[str] = None

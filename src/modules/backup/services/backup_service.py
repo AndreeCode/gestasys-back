@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import os
 import shutil
 from datetime import datetime, timedelta
@@ -19,6 +20,27 @@ DUMP_TIMEOUT_SECONDS = 30 * 60
 
 def backup_dir() -> Path:
     return Path(config.backup_dir).resolve()
+
+
+class HashingWriter:
+    def __init__(self, out):
+        self.out = out
+        self.digest = hashlib.sha256()
+
+    def write(self, data: bytes) -> None:
+        self.digest.update(data)
+        self.out.write(data)
+
+    def hexdigest(self) -> str:
+        return self.digest.hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as source:
+        while chunk := source.read(CHUNK_SIZE):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def ensure_backup_dir() -> Path:
@@ -98,18 +120,18 @@ class BackupService:
             extension = "dump.enc" if config.backup_encryption_key else "dump"
             file_name = f"gestasys-{datetime.now():%Y%m%d-%H%M%S}-{kind}.{extension}"
             path = ensure_backup_dir() / file_name
-            status, size, error_text = "completed", None, None
+            status, size, error_text, sha256 = "completed", None, None, None
             try:
-                await self._dump(path)
+                sha256 = await self._dump(path)
                 size = path.stat().st_size
                 logger.info(f"Backup completado: {file_name}")
             except Exception as err:
-                status, error_text, file_name = "failed", str(err)[:500], None
+                status, error_text, file_name, sha256 = "failed", str(err)[:500], None, None
                 path.unlink(missing_ok=True)
                 logger.error(f"Backup fallido: {err}")
             try:
                 async with transaction() as conn:
-                    await backupRepository.finish(conn, backup_id, status, file_name, size, error_text)
+                    await backupRepository.finish(conn, backup_id, status, file_name, size, error_text, sha256)
             except Exception as err:
                 logger.error(f"No se pudo actualizar el estado del backup {backup_id}: {err}")
             if status == "completed" and kind == "automatic":
@@ -120,7 +142,7 @@ class BackupService:
         finally:
             self._lock.release()
 
-    async def _dump(self, path: Path) -> None:
+    async def _dump(self, path: Path) -> str:
         key = config.backup_key()
         user, password = config.admin_credentials()
         env = {
@@ -143,7 +165,8 @@ class BackupService:
             stderr=asyncio.subprocess.PIPE,
         )
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "wb") as out:
+        with os.fdopen(fd, "wb") as raw:
+            out = HashingWriter(raw)
             sink = Encryptor(key, out) if key else out
 
             async def pump() -> None:
@@ -163,6 +186,7 @@ class BackupService:
                 raise RuntimeError(f"pg_dump: {detail}")
             if isinstance(sink, Encryptor):
                 sink.finish()
+        return out.hexdigest()
 
     def file_path(self, backup: Backup) -> Path:
         if backup.status != "completed" or not backup.file_name:
@@ -173,6 +197,16 @@ class BackupService:
             raise BadRequestError("Ruta de backup invalida")
         if not path.is_file():
             raise NotFoundError("El archivo del backup ya no existe en el servidor")
+        return path
+
+    async def verified_file_path(self, backup: Backup) -> Path:
+        path = self.file_path(backup)
+        if backup.sha256 is None:
+            return path
+        actual = await asyncio.to_thread(file_sha256, path)
+        if actual != backup.sha256.strip():
+            logger.error(f"Backup {backup.id} alterado: SHA-256 esperado {backup.sha256}, encontrado {actual}")
+            raise ConflictError("El archivo del backup fue modificado o esta danado (el SHA-256 no coincide): no se entrega")
         return path
 
     async def _remove(self, backup: Backup) -> None:
