@@ -12,7 +12,7 @@ Seguridad, igual que en SICNA:
 ```bash
 cd gestasys-back
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt   # lock con hashes; las dependencias directas se editan en requirements.in
 cp .env.example .env              # completar credenciales y JWT_SECRET
 python -m scripts.migrate         # crea/actualiza el esquema (idempotente)
 python -m scripts.seed            # permisos, roles, usuarios, establecimientos + demo
