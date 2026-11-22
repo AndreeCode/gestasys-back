@@ -3,6 +3,7 @@ from datetime import date
 
 from email_validator import EmailNotValidError, validate_email
 
+from ..security.common_passwords import COMMON_PASSWORDS
 from .app_error import ValidationError
 
 DNI_RE = re.compile(r"^[0-9]{8}$")
@@ -47,6 +48,11 @@ class Validator:
         self.check(
             any(c.isdigit() for c in value) and any(c.isalpha() for c in value),
             f"{field} debe combinar letras y numeros",
+        )
+        lowered = value.lower()
+        self.check(
+            lowered not in COMMON_PASSWORDS and lowered.rstrip("!.*#$@") not in COMMON_PASSWORDS,
+            f"{field} es demasiado comun, elige otra",
         )
 
     def one_of(self, field: str, value: str | None, allowed: list[str] | tuple[str, ...]) -> None:
