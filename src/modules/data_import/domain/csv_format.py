@@ -111,6 +111,21 @@ def detect_delimiter(header_line: str) -> str:
     return best if counts[best] > 0 else ","
 
 
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def neutralize(value):
+    if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def restore(value: str) -> str:
+    if len(value) > 1 and value[0] == "'" and value[1:].startswith(FORMULA_PREFIXES):
+        return value[1:].strip()
+    return value
+
+
 @dataclass
 class Sheet:
     columns: dict[str, int]
@@ -124,7 +139,7 @@ class Sheet:
         index = self.columns.get(key)
         if index is None or index >= len(row):
             return ""
-        return row[index].strip()
+        return restore(row[index].strip())
 
 
 def decode(data: bytes) -> str:
@@ -174,6 +189,6 @@ def read_sheet(data: bytes, max_rows: int) -> Sheet:
 def write_csv(header: list[str], rows: list[list], delimiter: str = ",") -> bytes:
     buffer = io.StringIO()
     writer = csv.writer(buffer, delimiter=delimiter)
-    writer.writerow(header)
-    writer.writerows(rows)
+    writer.writerow([neutralize(cell) for cell in header])
+    writer.writerows([neutralize(cell) for cell in row] for row in rows)
     return ("﻿" + buffer.getvalue()).encode("utf-8")
