@@ -31,7 +31,7 @@ from ...session.repositories.session_repositories import sessionRepository
 from ...session.services.session_service import sessionService
 from ...user.repositories.user_repositories import userRepository
 from ...user.services.user_service import userService
-from .login_rate_limiter import allow_login_attempt
+from .login_rate_limiter import allow_login_attempt, register_unknown_login_failure, unknown_login_locked_until
 
 
 class LoginRequest(StrictModel):
@@ -62,8 +62,15 @@ class AuthHandler:
 
         user = await userService.get_by_login(body.username)
         if user is None:
+            locked_until = unknown_login_locked_until(body.username)
+            if locked_until is not None:
+                await userService.log_auth_event("LOGIN_FAILED", None, "blocked", {"username": body.username, "reason": "locked"})
+                return error(429, lock_message(locked_until))
             burn_password_check(body.password)
+            locked_until = register_unknown_login_failure(body.username)
             await userService.log_auth_event("LOGIN_FAILED", None, "failed", {"username": body.username, "reason": "unknown_user"})
+            if locked_until is not None:
+                return error(429, lock_message(locked_until))
             return error(401, "Usuario o contrasena incorrectos")
 
         if user.is_locked():

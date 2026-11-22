@@ -74,6 +74,7 @@ Módulos: `auth`, `user`, `role`, `permission`, `health_facility`, `pregnancy`, 
   - Hay un límite de intentos por IP (`LOGIN_RATE_LIMIT` por minuto).
 - **IP del cliente**: el front reenvía la IP real del navegador en `X-Forwarded-For`, y el back solo la acepta si la petición viene de una IP de `TRUSTED_PROXIES` (por defecto `127.0.0.1,::1`, el servidor de Next). Si no viene de ahí, usa la IP del socket. Esa IP se usa en el rate limit, en `sessions` y en `audit_log`. En producción, el proxy que está delante de Next debe reescribir el encabezado (nginx: `proxy_set_header X-Forwarded-For $remote_addr;`).
   - Una verificación argon2 "de relleno" evita revelar por tiempo de respuesta si el usuario existe.
+  - Un usuario que no existe también "se bloquea" tras `LOGIN_MAX_ATTEMPTS` intentos, con el mismo 429 y el mismo mensaje, así que el bloqueo no sirve para saber qué cuentas existen. Se lleva en memoria (`login_rate_limiter.py`).
 - **Contraseña temporal**: los usuarios creados o reseteados por otro deben cambiarla primero (`PUT /api/auth/password`). Mientras no lo hagan, el resto de rutas responde 403. Cambiarla cierra las demás sesiones.
 - **Escalada de privilegios**:
   - Nadie puede asignar roles, otorgar permisos ni editar usuarios con permisos que no tenga él mismo.
