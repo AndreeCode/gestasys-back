@@ -21,8 +21,13 @@ def describe_db_error(exc: asyncpg.PostgresError) -> tuple[int, str]:
         return 409, "Ya existe un registro con esos datos"
     if isinstance(exc, asyncpg.ForeignKeyViolationError):
         return 400, "Hace referencia a un registro que no existe o esta en uso"
-    if isinstance(exc, (asyncpg.CheckViolationError, asyncpg.NotNullViolationError, asyncpg.DataError)):
-        return 400, f"Datos invalidos: {exc}"
+    if isinstance(exc, asyncpg.NotNullViolationError):
+        column = getattr(exc, "column_name", None)
+        return 400, f"Falta el campo obligatorio {column}" if column else "Falta un campo obligatorio"
+    if isinstance(exc, asyncpg.CheckViolationError):
+        return 400, "Algun dato no cumple las reglas del sistema, revisa los valores ingresados"
+    if isinstance(exc, asyncpg.DataError):
+        return 400, "Algun valor no tiene el formato o el rango esperado"
     if isinstance(exc, asyncpg.RaiseError):
         return 400, str(exc)
     return 500, "Error de base de datos"

@@ -25,6 +25,8 @@ async def init_pool() -> asyncpg.Pool:
             user=config.dbuser,
             password=config.dbpassword,
             ssl=config.db_sslmode,
+            timeout=10,
+            command_timeout=60,
             min_size=1,
             max_size=max(config.db_pool_max, 2),
             init=_init_connection,
