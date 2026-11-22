@@ -82,7 +82,14 @@ Módulos: `auth`, `user`, `role`, `permission`, `health_facility`, `pregnancy`, 
   - El rol `admin` es fijo.
 - **Alcance por establecimiento** (`users.health_facility_id`, migración `001`): si un usuario tiene establecimiento asignado, solo ve y modifica las gestantes, los controles, el dashboard, el export y la importación de ese establecimiento. Un registro de otro establecimiento responde 404, y filtrar por otro establecimiento responde 403. En la importación ve solo las suyas. Con `NULL` ve todo (admin, coordinador de red).
   - Un usuario limitado solo crea y administra usuarios de su mismo establecimiento, y no puede quitarles el límite ni moverlos. Nadie puede cambiar su propio establecimiento.
-- **Auditoría**: el trigger `audit_changes()` registra cada cambio en `audit_log`, sin hashes. Además se registran los eventos LOGIN, LOGIN_FAILED, LOGOUT y PASSWORD_CHANGED.
+- **Auditoría**: el trigger `audit_changes()` registra cada cambio en `audit_log`, y además se registran los eventos LOGIN, LOGIN_FAILED (con el motivo, incluido `ip_rate_limit`), LOGOUT y PASSWORD_CHANGED.
+  - **Cadena de hashes** (migración `003`): `audit_log` es de solo escritura, porque un trigger impide `UPDATE` y `DELETE`.
+  - Cada 60 s la app sella las filas nuevas con `seal_audit_log(AUDIT_CHAIN_KEY)`: HMAC-SHA256 encadenado, donde cada fila incluye el hash de la anterior.
+  - Al arrancar y cada hora se recorre la cadena (`verify_audit_chain`). También se puede verificar a mano con `GET /api/audit-logs/verify`.
+  - Si alguien edita o borra una fila directamente en la BD (incluso desactivando el trigger), la verificación indica el registro roto, el log muestra `ALERTA DE SEGURIDAD` y el dashboard lo marca en rojo.
+  - Límite: borrar las **últimas** filas antes de que se sellen no se detecta. Para eso sirve el ancla que el log escribe en cada verificación (último `seq` y su hash).
+- **Alertas**: el log escribe `ALERTA DE SEGURIDAD` cuando se bloquea una cuenta, cuando una IP supera el límite de logins o cuando un backup o la auditoría fueron alterados. El dashboard muestra los logins fallidos de las últimas 24 h y las cuentas bloqueadas (solo a usuarios sin establecimiento asignado).
+- **Logs**: los errores de validación no incluyen lo que envió el usuario (así no se filtran contraseñas), y los saltos de línea se escapan, así que no se pueden inyectar líneas falsas.
 
 ## Endpoints
 

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
+from ....core.db import audit_chain
 from ....core.db.connection import connection, ping
 from ...backup.services.backup_service import backupService
 from ...pregnancy.repositories.pregnancy_repositories import pregnancyRepository
@@ -91,6 +92,13 @@ class DashboardService:
             "last_backup_ok": last_ok,
             "server_time": datetime.now().astimezone(),
         }
+        if scope is None:
+            async with connection() as conn:
+                data["system"].update(await dashboardRepository.auth_summary(conn))
+            check = audit_chain.last_check
+            data["system"]["audit_chain_ok"] = check.get("ok")
+            data["system"]["audit_chain_checked_at"] = check.get("checked_at")
+            data["system"]["audit_chain_records"] = check.get("checked")
         return data
 
 

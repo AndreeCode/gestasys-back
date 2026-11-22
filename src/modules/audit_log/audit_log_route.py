@@ -35,6 +35,11 @@ async def get_all_audit_logs(
     return await auditLogHandler.get_all(f, limit, offset)
 
 
+@router.get("/verify", dependencies=[Depends(require_permission("audit_log.get"))])
+async def verify_audit_chain():
+    return await auditLogHandler.verify()
+
+
 @router.get("/{audit_log_id}", dependencies=[Depends(require_permission("audit_log.get"))])
 async def get_audit_log_by_id(audit_log_id: str):
     return await auditLogHandler.get_by_id(audit_log_id)

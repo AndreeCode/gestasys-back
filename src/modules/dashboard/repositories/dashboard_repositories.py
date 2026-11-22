@@ -87,4 +87,16 @@ class DashboardRepository:
         return [dict(row) for row in rows]
 
 
+    async def auth_summary(self, conn: asyncpg.Connection) -> dict:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                (SELECT count(*) FROM audit_log
+                 WHERE action = 'LOGIN_FAILED' AND created_at >= NOW() - INTERVAL '24 hours') AS failed_logins_24h,
+                (SELECT count(*) FROM users WHERE locked_until > NOW()) AS locked_accounts
+            """
+        )
+        return dict(row)
+
+
 dashboardRepository = DashboardRepository()

@@ -11,6 +11,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.core.config.config import config
+import asyncio
+
+from src.core.db import audit_chain
 from src.core.db.connection import close_pool, init_pool, ping
 from src.core.http.exception_handlers import register_exception_handlers
 from src.core.http.success import success
@@ -36,7 +39,13 @@ async def lifespan(app: FastAPI):
     except Exception as err:
         logger.error(f"No se pudieron marcar los backups interrumpidos: {err}")
     backupService.start_scheduler()
+    try:
+        await audit_chain.check_and_report()
+    except Exception as err:
+        logger.error(f"No se pudo verificar la cadena de auditoria: {err}")
+    sealer = asyncio.create_task(audit_chain.seal_loop())
     yield
+    sealer.cancel()
     await backupService.stop()
     await close_pool()
 

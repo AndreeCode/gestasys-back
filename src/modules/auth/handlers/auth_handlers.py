@@ -58,6 +58,9 @@ class AuthHandler:
     async def login(self, request: Request, body: LoginRequest):
         ip = client_ip(request)
         if not allow_login_attempt(ip):
+            set_audit_context(ip=ip, user_agent=request.headers.get("user-agent"))
+            await userService.log_auth_event("LOGIN_FAILED", None, "blocked", {"username": body.username, "reason": "ip_rate_limit"})
+            logger.error(f"ALERTA DE SEGURIDAD: la IP {ip} supero el limite de intentos de login por minuto")
             return error(429, "Demasiados intentos de inicio de sesion, espera un minuto")
 
         user = await userService.get_by_login(body.username)
@@ -70,6 +73,7 @@ class AuthHandler:
             locked_until = register_unknown_login_failure(body.username)
             await userService.log_auth_event("LOGIN_FAILED", None, "failed", {"username": body.username, "reason": "unknown_user"})
             if locked_until is not None:
+                logger.error(f"ALERTA DE SEGURIDAD: {config.login_max_attempts} intentos fallidos con el usuario inexistente {body.username!r} desde {ip}")
                 return error(429, lock_message(locked_until))
             return error(401, "Usuario o contrasena incorrectos")
 
@@ -83,6 +87,7 @@ class AuthHandler:
                 "LOGIN_FAILED", user.id, "failed", {"reason": "bad_password", "attempts": row["failed_attempts"]}
             )
             if row["locked_until"] is not None:
+                logger.error(f"ALERTA DE SEGURIDAD: cuenta {user.username} bloqueada por {config.login_max_attempts} contrasenas incorrectas desde {ip}")
                 return error(429, lock_message(row["locked_until"]))
             return error(401, "Usuario o contrasena incorrectos")
 

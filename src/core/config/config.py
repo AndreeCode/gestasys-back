@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import os
 
@@ -46,6 +48,7 @@ class Config:
     jwt_secret: str = os.getenv("JWT_SECRET", "")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     jwt_expire_minutes: int = _int("JWT_EXPIRE_MINUTES", 60)
+    audit_chain_key_env: str = os.getenv("AUDIT_CHAIN_KEY", "").strip()
 
     cookie_secure: bool = _bool("COOKIE_SECURE", False) or os.getenv("APP_ENV", "").strip().lower() == "production"
     cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax").lower()
@@ -83,6 +86,12 @@ class Config:
 
         return load_key(self.backup_encryption_key)
 
+    @property
+    def audit_chain_key(self) -> str:
+        if self.audit_chain_key_env:
+            return self.audit_chain_key_env
+        return hmac.new(self.jwt_secret.encode(), b"audit-chain-v1", hashlib.sha256).hexdigest()
+
     def problems(self) -> list[str]:
         found = []
         if self.app_env not in ("development", "production"):
@@ -108,6 +117,10 @@ class Config:
             found.append("BACKUP_ENCRYPTION_KEY es obligatorio en produccion (python -m scripts.backup_key --generate)")
         if self.is_production and "*" in self.cors_origins:
             found.append("CORS_ORIGINS no puede ser '*' en produccion")
+        if self.audit_chain_key_env and len(self.audit_chain_key_env) < 32:
+            found.append("AUDIT_CHAIN_KEY debe tener al menos 32 caracteres")
+        elif self.is_production and not self.audit_chain_key_env:
+            found.append("AUDIT_CHAIN_KEY es obligatorio en produccion (clave del HMAC de la cadena de auditoria)")
         return found
 
     def ensure_valid(self) -> None:
