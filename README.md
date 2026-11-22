@@ -1,0 +1,126 @@
+# gestasys-back
+
+API de GestaSys (seguimiento de gestantes) en **FastAPI + PostgreSQL (asyncpg)**. Tiene la misma arquitectura que SICNA-backend: route → handlers → services → repositories. Todas las respuestas tienen la forma `{status, msg, data?, meta?}`.
+
+Seguridad, igual que en SICNA:
+- El JWT va en una cookie httpOnly y se valida contra las sesiones guardadas en la BD.
+- Los permisos se revisan por código en cada petición.
+- La auditoría la registra un trigger.
+
+## Puesta en marcha
+
+```bash
+cd gestasys-back
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env              # completar credenciales y JWT_SECRET
+python -m scripts.migrate         # crea/actualiza el esquema (idempotente)
+python -m scripts.seed            # permisos, roles, usuarios, establecimientos + demo
+uvicorn main:app --reload --port 5000      # http://localhost:5000/api  (docs: /docs)
+```
+
+```bash
+python -m scripts.seed --no-demo  # solo datos base
+python -m scripts.reset           # TRUNCATE de todo (pide escribir el nombre de la BD; --yes para omitir)
+python -m scripts.reset --drop    # DROP SCHEMA public CASCADE → luego migrate
+python -m scripts.fresh --seed    # reset --drop + migrate + seed
+```
+
+Los scripts y `pg_dump` se conectan con `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD`, que corresponden al dueño del esquema. Si no están definidos, usan `DB_USER`.
+
+La app puede correr con un rol restringido llamado `gestasys_app`. Si ese rol existe, `init.sql` le da `SELECT/INSERT/UPDATE/DELETE` en las tablas y solo `SELECT` en `audit_log`.
+
+| usuario | contraseña | rol |
+|---|---|---|
+| `admin` | `Admin123!` | admin |
+| `coordinador` | `Coord123!` | coordinador |
+| `consulta` | `Consulta123!` | consulta |
+
+## Estructura
+
+```
+main.py                         FastAPI, lifespan (pool asyncpg + programador de backups), CORS, AuthMiddleware
+scripts/                        migrate, seed, reset, fresh
+src/core/
+  config/config.py              variables del .env
+  db/connection.py              pool, transaction() (set_config app.* para la auditoria), connection()
+  db/audit_context.py           ContextVar con el actor (usuario, dispositivo, IP, user-agent)
+  db/sql/init.sql               esquema idempotente (+ migrations/*.sql)
+  http/                         success / list_response / error, AppError, handlers globales (errores de Postgres → 4xx)
+  security/                     argon2, JWT, cookies, AuthMiddleware, require_permission
+  routes/routes.py              todos los routers bajo /api
+src/modules/<modulo>/
+  domain/ repositories/ services/ handlers/ seeders/ <modulo>_route.py
+```
+
+Módulos: `auth`, `user`, `role`, `permission`, `health_facility`, `pregnancy`, `prenatal_control`, `data_import`, `backup`, `dashboard`, `device`, `session` y `audit_log`.
+
+## Seguridad
+
+- **Login**: `POST /api/auth/login {username|email, password}`.
+  - Deja el JWT en la cookie httpOnly `access_token` y nunca lo devuelve en el cuerpo.
+  - Deja también la cookie `device_token` (400 días), que identifica al navegador.
+  - Registra el navegador en `devices` y crea una fila en `sessions`.
+- **Middleware**: en cada petición exige una sesión activa, con el dispositivo confiable y el usuario activo y sin bloqueo. Por eso el logout, cerrar una sesión o bloquear un dispositivo o usuario invalidan el token al instante.
+- **Fuerza bruta**:
+  - Tras `LOGIN_MAX_ATTEMPTS` intentos fallidos, la cuenta queda bloqueada `LOGIN_LOCK_MINUTES` minutos (responde 429).
+  - Hay un límite de intentos por IP (`LOGIN_RATE_LIMIT` por minuto).
+  - Una verificación argon2 "de relleno" evita revelar por tiempo de respuesta si el usuario existe.
+- **Contraseña temporal**: los usuarios creados o reseteados por otro deben cambiarla primero (`PUT /api/auth/password`). Mientras no lo hagan, el resto de rutas responde 403. Cambiarla cierra las demás sesiones.
+- **Escalada de privilegios**:
+  - Nadie puede asignar roles, otorgar permisos ni editar usuarios con permisos que no tenga él mismo.
+  - Nadie puede desactivarse, bloquearse ni cambiarse el rol a sí mismo.
+  - El rol `admin` es fijo.
+- **Auditoría**: el trigger `audit_changes()` registra cada cambio en `audit_log`, sin hashes. Además se registran los eventos LOGIN, LOGIN_FAILED, LOGOUT y PASSWORD_CHANGED.
+
+## Endpoints
+
+Todos van bajo `/api`. Los públicos son `GET /api`, `POST /api/auth/login` y `POST /api/auth/logout`.
+
+| Ruta | Permiso |
+|---|---|
+| `GET /api/auth/me` (usuario + `permissions[]` + sesión) · `PUT /api/auth/password` | solo sesión |
+| `GET /api/dashboard`: estadísticas, por establecimiento, actividad reciente, próximas citas, partos próximos, estado del sistema | `dashboard.get` |
+| `/api/users` CRUD (`?q=&role_id=&active=&blocked=`) | `user.*` |
+| `GET /api/roles/assignable`: roles que el usuario puede asignar | `user.post` |
+| `/api/roles` CRUD (`permission_ids` reemplaza la lista) | `role.*` |
+| `GET /api/permissions` | `permission.get` |
+| `/api/health-facilities` CRUD | `health_facility.*` |
+| `/api/pregnancies` CRUD (`?q=&health_facility_id=&status=&risk_level=&due_from=&due_to=&active=&limit=&offset=`), `GET /api/pregnancies/stats` | `pregnancy.*` |
+| `GET /api/pregnancies/export` (mismos filtros, `?delimiter=;`) | `pregnancy.export` |
+| `POST /api/pregnancies/import` (multipart `file`, `?dry_run=true`), `GET /api/pregnancies/import/template` | `pregnancy.import` |
+| `GET /api/imports`, `GET /api/imports/{id}` | `data_import.get` |
+| `/api/prenatal-controls` CRUD (`?pregnancy_id=&date_from=&date_to=`) | `prenatal_control.*` |
+| `GET /api/backups`, `/status`, `/{id}`, `/{id}/file` · `POST /api/backups` (202) · `DELETE /api/backups/{id}` | `backup.*` |
+| `GET /api/devices`, `GET/PUT /api/devices/{id}` (`{trusted, blocked_reason}`) | `device.get/put` |
+| `GET /api/sessions`, `GET/DELETE /api/sessions/{id}` | `session.get/delete` |
+| `GET /api/audit-logs` (filtros + paginación), `GET /api/audit-logs/{id}` | `audit_log.get` |
+
+Los `PUT` son una fusión parcial (`model_dump(exclude_unset=True)`): solo cambian los campos enviados, y un `null` explícito borra los campos opcionales.
+
+## Reglas de negocio
+
+- **Gestantes**:
+  - El código `EMB-AAAA-NNNNN` es un correlativo por año.
+  - La FPP es FUM + 280 días si no se envía.
+  - La edad gestacional se calcula al consultar.
+  - Estados: `pending`, `in_followup` y `completed`. Riesgo: `low`, `medium` y `high`.
+  - Solo puede haber un registro abierto por DNI.
+  - Borrar es lógico.
+- **Controles prenatales**:
+  - La fecha no puede ser futura ni anterior a la FUM.
+  - Las semanas se calculan si no se envían.
+  - El primer control pasa el registro de `pending` a `in_followup`.
+  - Cada control devuelve `alerts`: presión arterial ≥ 140/90, hemoglobina < 11, frecuencia cardiaca fetal fuera de 110–160.
+- **Importación CSV**:
+  - Detecta `,`, `;` o tabulación, y acepta BOM, tildes, sinónimos de cabecera y fechas DD/MM/AAAA.
+  - Una fila con `codigo` actualiza ese registro; con un DNI que ya tiene registro abierto, actualiza ese; si no, crea uno nuevo.
+  - Cada fila va en su propio savepoint: los errores se reportan por línea sin detener el resto.
+  - `dry_run=true` solo valida, sin guardar nada.
+- **Backups**:
+  - Se hacen con `pg_dump --format=custom` en `BACKUP_DIR`.
+  - El automático diario corre a las `BACKUP_HOUR:BACKUP_MINUTE` y se conservan los últimos `BACKUP_KEEP`.
+  - Solo corre uno a la vez.
+  - Para restaurar: `pg_restore --clean --if-exists -d gestasys archivo.dump`.
+  - Requiere tener `pg_dump` instalado.
+# gestasys-back
