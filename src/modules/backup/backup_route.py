@@ -3,6 +3,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Body, Depends, Query, Request
 
 from ...core.security.permission_guard import require_permission
+from ...core.security.throttle import throttle
 from ...core.security.principal import current_principal
 from .handlers.backup_handlers import BackupCreateRequest, backupHandler
 
@@ -29,12 +30,12 @@ async def get_backup_by_id(backup_id: str):
     return await backupHandler.get_by_id(backup_id)
 
 
-@router.get("/{backup_id}/file", dependencies=[Depends(require_permission("backup.get"))])
+@router.get("/{backup_id}/file", dependencies=[Depends(require_permission("backup.get")), Depends(throttle("backup_download", 10, 3600))])
 async def download_backup(backup_id: str):
     return await backupHandler.download(backup_id)
 
 
-@router.post("", dependencies=[Depends(require_permission("backup.post"))])
+@router.post("", dependencies=[Depends(require_permission("backup.post")), Depends(throttle("backup", 3, 3600))])
 async def create_backup(request: Request, body: Optional[BackupCreateRequest] = Body(default=None)):
     return await backupHandler.create(current_principal(request).user_id, body)
 

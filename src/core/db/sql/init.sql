@@ -365,7 +365,7 @@ DECLARE
     v_actor RECORD;
 BEGIN
     IF p_action NOT IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'PASSWORD_CHANGED', 'MFA_ENABLED', 'MFA_DISABLED',
-                        'MFA_RESET', 'MFA_FAILED', 'SESSION_IDLE', 'SESSION_REVOKED') THEN
+                        'MFA_RESET', 'MFA_FAILED', 'SESSION_IDLE', 'SESSION_REVOKED', 'ACCESS_DENIED') THEN
         RAISE EXCEPTION 'Accion de autenticacion no permitida: %', p_action;
     END IF;
 

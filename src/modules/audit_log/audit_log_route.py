@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query
 
 from ...core.http.uuid_param import parse_optional_uuid
 from ...core.security.permission_guard import require_permission
+from ...core.security.throttle import throttle
 from .domain.audit_log_domain import AuditLogFilter
 from .handlers.audit_log_handlers import auditLogHandler
 
@@ -35,7 +36,7 @@ async def get_all_audit_logs(
     return await auditLogHandler.get_all(f, limit, offset)
 
 
-@router.get("/verify", dependencies=[Depends(require_permission("audit_log.get"))])
+@router.get("/verify", dependencies=[Depends(require_permission("audit_log.get")), Depends(throttle("audit_verify", 6, 600))])
 async def verify_audit_chain():
     return await auditLogHandler.verify()
 

@@ -94,7 +94,7 @@ class UserService:
             health_facility_id=self._assignable_facility(data.get("health_facility_id"), scope),
         )
         v = Validator()
-        v.password("password", data.get("password"))
+        v.password("password", data.get("password"), (user.username, user.email, user.full_name, user.dni))
         v.raise_if_errors()
         validate(user)
         await self._assignable_role(caller_id, user.role_id)
@@ -149,14 +149,14 @@ class UserService:
         if not user.blocked:
             user.blocked_reason = None
 
+        validate(user)
+
         new_hash = None
         if data.get("password"):
             v = Validator()
-            v.password("password", data["password"])
+            v.password("password", data["password"], (user.username, user.email, user.full_name, user.dni))
             v.raise_if_errors()
             new_hash = hash_password(data["password"])
-
-        validate(user)
 
         async with transaction() as conn:
             if facility_changed and user.health_facility_id is not None:
@@ -184,12 +184,8 @@ class UserService:
         if not verify_password(current, user.password_hash):
             raise BadRequestError("La contrasena actual es incorrecta")
         v = Validator()
-        v.password("new_password", new)
+        v.password("new_password", new, (user.username, user.email, user.full_name, user.dni))
         v.check(new != current, "La nueva contrasena debe ser distinta a la actual")
-        v.check(
-            new.lower() not in (user.username.lower(), user.email.lower()),
-            "La contrasena no puede ser igual a tu usuario o correo",
-        )
         v.raise_if_errors()
         async with transaction() as conn:
             await userRepository.set_password(conn, user.id, hash_password(new), False)

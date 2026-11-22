@@ -3,6 +3,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from ..db.connection import transaction
+from ..logger.logger import logger
 from .app_error import AppError
 from .error import error
 
@@ -38,10 +40,26 @@ def database_error(exc: asyncpg.PostgresError):
     return error(status, msg, exc)
 
 
+async def log_access_denied(request: Request, msg: str) -> None:
+    principal = getattr(request.state, "principal", None)
+    details = {"method": request.method, "path": request.url.path, "msg": msg}
+    try:
+        async with transaction() as conn:
+            await conn.execute(
+                "SELECT log_auth_event('ACCESS_DENIED', $1::uuid, 'blocked', $2::jsonb)",
+                principal.user_id if principal else None,
+                details,
+            )
+    except Exception as err:
+        logger.error(f"No se pudo registrar el acceso denegado: {err}")
+
+
 def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError):
+        if exc.status == 403:
+            await log_access_denied(request, exc.msg)
         return error(exc.status, exc.msg)
 
     @app.exception_handler(asyncpg.PostgresError)

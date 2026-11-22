@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
 from ...core.security.facility_scope import facility_scope
 from ...core.security.permission_guard import require_permission
+from ...core.security.throttle import throttle
 from ...core.security.principal import current_principal
 from ..data_import.handlers.data_import_handlers import dataImportHandler
 from .handlers.pregnancy_handlers import (
@@ -52,7 +53,7 @@ async def search_pregnancies(body: PregnancySearchRequest, scope: Optional[UUID]
     return await pregnancyHandler.get_all(body_filter(body, scope), body.limit, body.offset)
 
 
-@router.post("/export", dependencies=[Depends(require_permission("pregnancy.export"))])
+@router.post("/export", dependencies=[Depends(require_permission("pregnancy.export")), Depends(throttle("export", 10, 600))])
 async def export_pregnancies_post(body: PregnancySearchRequest, scope: Optional[UUID] = Depends(facility_scope)):
     return await dataImportHandler.export(body_filter(body, scope), body.delimiter)
 
@@ -62,7 +63,7 @@ async def get_pregnancy_stats(health_facility_id: Optional[str] = None, scope: O
     return await pregnancyHandler.stats(health_facility_id, scope)
 
 
-@router.get("/export", dependencies=[Depends(require_permission("pregnancy.export"))])
+@router.get("/export", dependencies=[Depends(require_permission("pregnancy.export")), Depends(throttle("export", 10, 600))])
 async def export_pregnancies(f=Depends(pregnancy_filter), delimiter: Optional[str] = None):
     return await dataImportHandler.export(f, delimiter)
 
@@ -72,7 +73,7 @@ async def import_template():
     return dataImportHandler.template()
 
 
-@router.post("/import", dependencies=[Depends(require_permission("pregnancy.import"))])
+@router.post("/import", dependencies=[Depends(require_permission("pregnancy.import")), Depends(throttle("import", 20, 600))])
 async def import_pregnancies(request: Request, file: UploadFile = File(...), dry_run: bool = False):
     principal = current_principal(request)
     return await dataImportHandler.import_file(principal.user_id, principal.health_facility_id, file, dry_run)

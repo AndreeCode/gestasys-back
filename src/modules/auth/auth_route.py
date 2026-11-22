@@ -9,6 +9,7 @@ from .handlers.auth_handlers import (
     MfaCodeRequest,
     MfaDisableRequest,
     MfaLoginRequest,
+    PasswordConfirmRequest,
     authHandler,
 )
 
@@ -46,8 +47,8 @@ async def mfa_status(request: Request):
 
 
 @router.post("/mfa/setup")
-async def mfa_setup(request: Request):
-    return await authHandler.mfa_setup(current_principal(request))
+async def mfa_setup(request: Request, body: PasswordConfirmRequest):
+    return await authHandler.mfa_setup(current_principal(request), body)
 
 
 @router.post("/mfa/enable")
@@ -65,6 +66,11 @@ async def my_sessions(request: Request):
     return await authHandler.my_sessions(current_principal(request))
 
 
-@router.delete("/sessions/{session_id}")
-async def revoke_my_session(request: Request, session_id: UUID):
-    return await authHandler.revoke_my_session(current_principal(request), session_id)
+@router.post("/sessions/revoke-others")
+async def revoke_my_other_sessions(request: Request, body: PasswordConfirmRequest):
+    return await authHandler.revoke_my_other_sessions(current_principal(request), body)
+
+
+@router.post("/sessions/{session_id}/revoke")
+async def revoke_my_session(request: Request, session_id: UUID, body: PasswordConfirmRequest):
+    return await authHandler.revoke_my_session(current_principal(request), session_id, body)

@@ -64,6 +64,13 @@ Módulos: `auth`, `user`, `role`, `permission`, `health_facility`, `pregnancy`, 
 
 ## Seguridad
 
+La matriz completa frente a **OWASP ASVS 5.0 nivel 2** (back + front), con la documentación que exige el estándar (clasificación de datos, inventario de claves y de registros, plazos de corrección, operaciones costosas), está en [`ASVS.md`](ASVS.md).
+
+- **Reautenticación** (V7.5): configurar o desactivar el MFA y cerrar sesiones propias (`POST /api/auth/sessions/{id}/revoke`, `POST /api/auth/sessions/revoke-others`) piden la contraseña. Un fallo cuenta como intento de login. Activar o desactivar el MFA cierra las demás sesiones.
+- **Contraseñas** (V6.1.2): además de la lista de comunes, se rechazan las que contengan el usuario, el correo, el nombre, el DNI o «gestasys».
+- **Límites por usuario** (`core/security/throttle.py`): export 10 cada 10 min, import 20 cada 10 min, backup manual 3 por hora, descarga de backup 10 por hora, verificación de auditoría 6 cada 10 min → 429.
+- **Accesos denegados**: todo 403 queda en `audit_log` como `ACCESS_DENIED` (método, ruta, motivo).
+
 - **Login**: `POST /api/auth/login {username|email, password}`.
   - Deja el JWT en la cookie httpOnly `access_token` y nunca lo devuelve en el cuerpo.
   - Deja también la cookie `device_token` (400 días), que identifica al navegador.
@@ -97,7 +104,7 @@ Todos van bajo `/api`. Los públicos son `GET /api`, `POST /api/auth/login` y `P
 
 | Ruta | Permiso |
 |---|---|
-| `GET /api/auth/me` (usuario + `permissions[]` + sesión) · `PUT /api/auth/password` | solo sesión |
+| `GET /api/auth/me` (usuario + `permissions[]` + sesión) · `PUT /api/auth/password` · `/api/auth/mfa*` · `GET /api/auth/sessions`, `POST /api/auth/sessions/{id}/revoke`, `POST /api/auth/sessions/revoke-others` | solo sesión |
 | `GET /api/dashboard`: estadísticas, por establecimiento, actividad reciente, próximas citas, partos próximos, estado del sistema | `dashboard.get` |
 | `/api/users` CRUD (`?q=&role_id=&active=&blocked=`) | `user.*` |
 | `GET /api/roles/assignable`: roles que el usuario puede asignar | `user.post` |

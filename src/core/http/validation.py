@@ -7,6 +7,7 @@ from ..security.common_passwords import COMMON_PASSWORDS
 from .app_error import ValidationError
 
 DNI_RE = re.compile(r"^[0-9]{8}$")
+APP_WORDS = ("gestasys",)
 
 
 class Validator:
@@ -39,7 +40,7 @@ class Validator:
         except EmailNotValidError:
             self.add(f"{field} no es un correo valido")
 
-    def password(self, field: str, value: str | None) -> None:
+    def password(self, field: str, value: str | None, context: tuple[str | None, ...] = ()) -> None:
         value = value or ""
         if len(value) < 8:
             self.add(f"{field} debe tener al menos 8 caracteres")
@@ -49,6 +50,11 @@ class Validator:
         self.check(
             lowered not in COMMON_PASSWORDS and lowered.rstrip("!.*#$@") not in COMMON_PASSWORDS,
             f"{field} es demasiado comun, elige otra",
+        )
+        words = {w.lower() for w in (*APP_WORDS, *context_words(context)) if w and len(w) >= 4}
+        self.check(
+            not any(word in lowered for word in words),
+            f"{field} no puede contener tu usuario, nombre, correo, DNI ni el nombre del sistema",
         )
 
     def one_of(self, field: str, value: str | None, allowed: list[str] | tuple[str, ...]) -> None:
@@ -61,6 +67,17 @@ class Validator:
     def raise_if_errors(self) -> None:
         if self.errors:
             raise ValidationError(self.errors)
+
+
+def context_words(values: tuple[str | None, ...]) -> list[str]:
+    words: list[str] = []
+    for value in values:
+        if not value:
+            continue
+        value = value.strip().lower().split("@")[0]
+        words.append(value)
+        words.extend(re.split(r"[\s._-]+", value))
+    return words
 
 
 def clean(value: str | None) -> str | None:

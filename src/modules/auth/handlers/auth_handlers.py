@@ -45,6 +45,10 @@ class MfaLoginRequest(StrictModel):
     code: str = Field(min_length=6, max_length=20)
 
 
+class PasswordConfirmRequest(StrictModel):
+    password: str = Field(min_length=1, max_length=128)
+
+
 class MfaCodeRequest(StrictModel):
     code: str = Field(min_length=6, max_length=20)
 
@@ -252,9 +256,9 @@ class AuthHandler:
         user = await userService.get_by_id(principal.user_id)
         return success(200, "Estado de la verificacion en dos pasos", await mfaService.status(user))
 
-    async def mfa_setup(self, principal: Principal):
+    async def mfa_setup(self, principal: Principal, body: PasswordConfirmRequest):
         user = await userService.get_by_id(principal.user_id)
-        data = await mfaService.setup(user)
+        data = await mfaService.setup(user, body.password)
         return success(200, "Agrega la clave en tu app autenticadora y confirma con un codigo", data)
 
     async def mfa_enable(self, principal: Principal, body: MfaCodeRequest):
@@ -276,12 +280,20 @@ class AuthHandler:
             row["current"] = row["id"] == principal.session_id
         return success(200, "Tus sesiones activas", rows)
 
-    async def revoke_my_session(self, principal: Principal, session_id: UUID):
+    async def revoke_my_session(self, principal: Principal, session_id: UUID, body: PasswordConfirmRequest):
+        await mfaService.confirm_password(principal.user_id, body.password)
         async with transaction() as conn:
             if not await sessionRepository.revoke_own(conn, principal.user_id, session_id, "revoked_by_user"):
                 return error(404, "Sesion no encontrada o ya cerrada")
             await userRepository.log_auth_event(conn, "SESSION_REVOKED", principal.user_id, "successful", {"session_id": str(session_id)})
         return success(200, "Sesion cerrada")
+
+    async def revoke_my_other_sessions(self, principal: Principal, body: PasswordConfirmRequest):
+        await mfaService.confirm_password(principal.user_id, body.password)
+        async with transaction() as conn:
+            await userRepository.revoke_sessions(conn, principal.user_id, "revoked_by_user", principal.session_id)
+            await userRepository.log_auth_event(conn, "SESSION_REVOKED", principal.user_id, "successful", {"scope": "others"})
+        return success(200, "Se cerraron tus demas sesiones")
 
 
 authHandler = AuthHandler()

@@ -1,11 +1,14 @@
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
 )
+logging.Formatter.converter = time.gmtime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

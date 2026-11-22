@@ -3,7 +3,8 @@ from uuid import UUID
 
 from ....core.config.config import config
 from ....core.db.connection import connection, transaction
-from ....core.http.app_error import BadRequestError, ConflictError, ForbiddenError, NotFoundError
+from ....core.http.app_error import AppError, BadRequestError, ConflictError, ForbiddenError
+from ....core.logger.logger import logger
 from ....core.security import totp
 from ....core.security.password import verify_password
 from ....core.security.principal import Principal
@@ -37,7 +38,21 @@ class MfaService:
             "enabled_at": row["mfa_enabled_at"] if row else None,
         }
 
-    async def setup(self, user: User) -> dict:
+    async def confirm_password(self, user_id: UUID, password: str) -> None:
+        user = await userService.get_by_id(user_id)
+        if user.is_locked():
+            raise AppError(429, "Demasiados intentos fallidos, espera unos minutos e intenta de nuevo")
+        if not verify_password(password, user.password_hash):
+            row = await userService.register_failure(user_id)
+            await userService.log_auth_event(
+                "LOGIN_FAILED", user_id, "failed", {"reason": "reauth_bad_password", "attempts": row["failed_attempts"]}
+            )
+            if row["locked_until"] is not None:
+                logger.error(f"ALERTA DE SEGURIDAD: cuenta {user.username} bloqueada por contrasenas incorrectas al reautenticarse")
+            raise BadRequestError("La contrasena es incorrecta")
+
+    async def setup(self, user: User, password: str) -> dict:
+        await self.confirm_password(user.id, password)
         async with connection() as conn:
             row = await userRepository.get_mfa(conn, user.id)
         if row and row["mfa_enabled"]:
@@ -71,12 +86,12 @@ class MfaService:
         user = await userService.get_by_id(principal.user_id)
         if required_for(user.role):
             raise ForbiddenError("Tu rol exige la verificacion en dos pasos: no se puede desactivar")
-        if not verify_password(password, (await self._password_hash(user.id))):
-            raise BadRequestError("La contrasena es incorrecta")
+        await self.confirm_password(user.id, password)
         if not await self.verify_code(user.id, code):
             raise BadRequestError("El codigo no es valido")
         async with transaction() as conn:
             await userRepository.clear_mfa(conn, user.id)
+            await userRepository.revoke_sessions(conn, user.id, "mfa_disabled", principal.session_id)
             await userRepository.log_auth_event(conn, "MFA_DISABLED", user.id, "successful", None)
 
     async def reset(self, caller_id: UUID, user_id: UUID, scope: Optional[UUID]) -> None:
@@ -103,13 +118,6 @@ class MfaService:
                 await userRepository.log_auth_event(conn, "LOGIN", user_id, "successful", {"mfa": "recovery_code"})
                 return True
         return False
-
-    async def _password_hash(self, user_id: UUID) -> str:
-        async with connection() as conn:
-            value = await conn.fetchval("SELECT password_hash FROM users WHERE id = $1", user_id)
-        if value is None:
-            raise NotFoundError("Usuario no encontrado")
-        return value
 
 
 mfaService = MfaService()

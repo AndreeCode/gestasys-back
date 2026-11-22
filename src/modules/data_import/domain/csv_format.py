@@ -142,7 +142,12 @@ class Sheet:
         return restore(row[index].strip())
 
 
+BINARY_SIGNATURES = (b"PK\x03\x04", b"%PDF", b"MZ", b"\x7fELF", b"\xd0\xcf\x11\xe0", b"\x89PNG", b"\xff\xd8\xff", b"GIF8")
+
+
 def decode(data: bytes) -> str:
+    if b"\x00" in data or data.startswith(BINARY_SIGNATURES):
+        raise ValidationError("El archivo no es un CSV de texto (si es Excel, guardalo como CSV UTF-8)")
     for encoding in ("utf-8-sig", "cp1252", "latin-1"):
         try:
             return data.decode(encoding)
