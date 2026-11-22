@@ -10,6 +10,7 @@ from ....core.config.config import config
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import AppError, BadRequestError, ConflictError, NotFoundError
 from ....core.logger.logger import logger
+from ....core.security.backup_crypto import CHUNK_SIZE, Encryptor
 from ..domain.backup_domain import Backup
 from ..repositories.backup_repositories import backupRepository
 
@@ -18,6 +19,13 @@ DUMP_TIMEOUT_SECONDS = 30 * 60
 
 def backup_dir() -> Path:
     return Path(config.backup_dir).resolve()
+
+
+def ensure_backup_dir() -> Path:
+    directory = backup_dir()
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    os.chmod(directory, 0o700)
+    return directory
 
 
 def pg_dump_available() -> bool:
@@ -87,8 +95,9 @@ class BackupService:
 
     async def _run(self, backup_id: UUID, kind: str) -> None:
         try:
-            file_name = f"gestasys-{datetime.now():%Y%m%d-%H%M%S}-{kind}.dump"
-            path = backup_dir() / file_name
+            extension = "dump.enc" if config.backup_encryption_key else "dump"
+            file_name = f"gestasys-{datetime.now():%Y%m%d-%H%M%S}-{kind}.{extension}"
+            path = ensure_backup_dir() / file_name
             status, size, error_text = "completed", None, None
             try:
                 await self._dump(path)
@@ -112,9 +121,14 @@ class BackupService:
             self._lock.release()
 
     async def _dump(self, path: Path) -> None:
-        backup_dir().mkdir(parents=True, exist_ok=True)
+        key = config.backup_key()
         user, password = config.admin_credentials()
-        env = {**os.environ, "PGPASSWORD": password or "", "PGCONNECT_TIMEOUT": "10"}
+        env = {
+            **os.environ,
+            "PGPASSWORD": password or "",
+            "PGCONNECT_TIMEOUT": "10",
+            "PGSSLMODE": config.db_sslmode,
+        }
         process = await asyncio.create_subprocess_exec(
             config.pg_dump_path,
             "--format=custom",
@@ -124,19 +138,31 @@ class BackupService:
             "--port", str(config.dbport),
             "--username", user,
             "--dbname", config.dbname,
-            "--file", str(path),
             env=env,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+            stderr=asyncio.subprocess.PIPE,
         )
-        try:
-            output, _ = await asyncio.wait_for(process.communicate(), DUMP_TIMEOUT_SECONDS)
-        except asyncio.TimeoutError:
-            process.kill()
-            raise RuntimeError("pg_dump excedio el tiempo maximo")
-        if process.returncode != 0:
-            detail = output.decode(errors="replace").strip()[:500] or f"codigo de salida {process.returncode}"
-            raise RuntimeError(f"pg_dump: {detail}")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as out:
+            sink = Encryptor(key, out) if key else out
+
+            async def pump() -> None:
+                while chunk := await process.stdout.read(CHUNK_SIZE):
+                    sink.write(chunk)
+
+            errors = asyncio.create_task(process.stderr.read())
+            try:
+                await asyncio.wait_for(asyncio.gather(pump(), process.wait()), DUMP_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                process.kill()
+                await process.wait()
+                raise RuntimeError("pg_dump excedio el tiempo maximo")
+            output = await errors
+            if process.returncode != 0:
+                detail = output.decode(errors="replace").strip()[:500] or f"codigo de salida {process.returncode}"
+                raise RuntimeError(f"pg_dump: {detail}")
+            if isinstance(sink, Encryptor):
+                sink.finish()
 
     def file_path(self, backup: Backup) -> Path:
         if backup.status != "completed" or not backup.file_name:
@@ -171,6 +197,15 @@ class BackupService:
             old = await backupRepository.old_automatic(conn, config.backup_keep)
         for backup in old:
             await self._remove(backup)
+
+    def secure_files(self) -> None:
+        directory = backup_dir()
+        if not directory.is_dir():
+            return
+        os.chmod(directory, 0o700)
+        for item in directory.iterdir():
+            if item.is_file():
+                os.chmod(item, 0o600)
 
     async def mark_interrupted(self) -> None:
         async with transaction() as conn:

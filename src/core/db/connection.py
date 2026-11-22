@@ -24,6 +24,7 @@ async def init_pool() -> asyncpg.Pool:
             database=config.dbname,
             user=config.dbuser,
             password=config.dbpassword,
+            ssl=config.db_sslmode,
             min_size=1,
             max_size=max(config.db_pool_max, 2),
             init=_init_connection,
@@ -47,7 +48,8 @@ def get_pool() -> asyncpg.Pool:
 async def connect_admin() -> asyncpg.Connection:
     user, password = config.admin_credentials()
     conn = await asyncpg.connect(
-        host=config.dbhost, port=config.dbport, database=config.dbname, user=user, password=password
+        host=config.dbhost, port=config.dbport, database=config.dbname, user=user, password=password,
+        ssl=config.db_sslmode,
     )
     await _init_connection(conn)
     return conn

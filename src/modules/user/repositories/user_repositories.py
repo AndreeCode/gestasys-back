@@ -114,6 +114,9 @@ class UserRepository:
             must_change,
         )
 
+    async def rehash_password(self, conn: asyncpg.Connection, user_id: UUID, password_hash: str) -> None:
+        await conn.execute("UPDATE users SET password_hash = $2 WHERE id = $1", user_id, password_hash)
+
     async def unlock(self, conn: asyncpg.Connection, user_id: UUID) -> None:
         await conn.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1", user_id)
 

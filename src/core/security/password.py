@@ -19,6 +19,13 @@ def verify_password(password: str, password_hash: str) -> bool:
         return False
 
 
+def needs_rehash(password_hash: str) -> bool:
+    try:
+        return _hasher.check_needs_rehash(password_hash)
+    except InvalidHashError:
+        return True
+
+
 def burn_password_check(password: str) -> None:
     verify_password(password, _dummy_hash)
 

@@ -8,6 +8,9 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 INSECURE_SECRET = "dev-secret-change-me"
+JWT_ALGORITHMS = ("HS256", "HS384", "HS512")
+SSL_MODES = ("disable", "prefer", "require", "verify-ca", "verify-full")
+LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1")
 
 
 def _int(key: str, default: int) -> int:
@@ -38,6 +41,7 @@ class Config:
     db_admin_user: str = os.getenv("DB_ADMIN_USER", "")
     db_admin_password: str = os.getenv("DB_ADMIN_PASSWORD", "")
     db_pool_max: int = _int("DB_POOL_MAX", 10)
+    db_sslmode: str = os.getenv("DB_SSLMODE", "prefer").strip().lower()
 
     jwt_secret: str = os.getenv("JWT_SECRET", "")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
@@ -62,10 +66,22 @@ class Config:
     backup_minute: int = _int("BACKUP_MINUTE", 0)
     backup_keep: int = _int("BACKUP_KEEP", 14)
     pg_dump_path: str = os.getenv("PG_DUMP_PATH", "pg_dump")
+    backup_encryption_key: str = os.getenv("BACKUP_ENCRYPTION_KEY", "").strip()
 
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
+
+    @property
+    def db_is_local(self) -> bool:
+        return self.dbhost in LOCAL_HOSTS or self.dbhost.startswith("/")
+
+    def backup_key(self) -> bytes | None:
+        if not self.backup_encryption_key:
+            return None
+        from ..security.backup_crypto import load_key
+
+        return load_key(self.backup_encryption_key)
 
     def problems(self) -> list[str]:
         found = []
@@ -77,6 +93,19 @@ class Config:
             found.append("JWT_SECRET debe tener al menos 32 caracteres")
         if not self.dbpassword:
             found.append("DB_PASSWORD no esta configurado")
+        if self.jwt_algorithm not in JWT_ALGORITHMS:
+            found.append(f"JWT_ALGORITHM debe ser uno de: {', '.join(JWT_ALGORITHMS)}")
+        if self.db_sslmode not in SSL_MODES:
+            found.append(f"DB_SSLMODE debe ser uno de: {', '.join(SSL_MODES)}")
+        elif self.is_production and not self.db_is_local and self.db_sslmode in ("disable", "prefer"):
+            found.append("DB_SSLMODE debe ser require, verify-ca o verify-full si la BD esta en otro servidor")
+        if self.backup_encryption_key:
+            try:
+                self.backup_key()
+            except ValueError as err:
+                found.append(str(err))
+        elif self.is_production:
+            found.append("BACKUP_ENCRYPTION_KEY es obligatorio en produccion (python -m scripts.backup_key --generate)")
         if self.is_production and "*" in self.cors_origins:
             found.append("CORS_ORIGINS no puede ser '*' en produccion")
         return found

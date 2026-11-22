@@ -28,6 +28,10 @@ async def lifespan(app: FastAPI):
     await init_pool()
     logger.info("Base de datos conectada correctamente")
     try:
+        backupService.secure_files()
+    except OSError as err:
+        logger.error(f"No se pudieron ajustar los permisos de los backups: {err}")
+    try:
         await backupService.mark_interrupted()
     except Exception as err:
         logger.error(f"No se pudieron marcar los backups interrumpidos: {err}")

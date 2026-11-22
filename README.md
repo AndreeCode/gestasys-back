@@ -131,6 +131,8 @@ Los `PUT` son una fusión parcial (`model_dump(exclude_unset=True)`): solo cambi
   - Se hacen con `pg_dump --format=custom` en `BACKUP_DIR`.
   - El automático diario corre a las `BACKUP_HOUR:BACKUP_MINUTE` y se conservan los últimos `BACKUP_KEEP`.
   - Solo corre uno a la vez.
-  - Para restaurar: `pg_restore --clean --if-exists -d gestasys archivo.dump`.
+  - Con `BACKUP_ENCRYPTION_KEY` (obligatoria en producción) se cifran con AES-256-GCM mientras `pg_dump` escribe: nunca hay un volcado en claro en disco. El archivo queda como `.dump.enc`, con permisos `600` dentro de una carpeta `700`.
+  - Para restaurar uno cifrado: `python -m scripts.backup_key --decrypt archivo.dump.enc archivo.dump` y luego `pg_restore --clean --if-exists -d gestasys archivo.dump`. Si se altera un byte o se usa otra clave, el descifrado se rechaza.
+  - **Si se pierde la clave, los backups cifrados no se pueden recuperar**: guárdala fuera del servidor.
   - Requiere tener `pg_dump` instalado.
 # gestasys-back

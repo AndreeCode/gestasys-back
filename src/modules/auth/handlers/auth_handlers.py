@@ -22,7 +22,7 @@ from ....core.security.cookies import (
     set_device_cookie,
 )
 from ....core.security.jwt import create_access_token, decode_access_token
-from ....core.security.password import burn_password_check, verify_password
+from ....core.security.password import burn_password_check, hash_password, needs_rehash, verify_password
 from ....core.security.permissions import user_permissions
 from ....core.security.principal import Principal
 from ....core.security.tokens import generate_token, hash_token
@@ -122,6 +122,8 @@ class AuthHandler:
                 conn, session_id, user.id, device.id, hash_token(token), valid_ip(ip), user_agent, expires_at
             )
             await userRepository.register_login(conn, user.id)
+            if needs_rehash(user.password_hash):
+                await userRepository.rehash_password(conn, user.id, hash_password(body.password))
             await userRepository.log_auth_event(conn, "LOGIN", user.id, "successful", {"session_id": str(session_id)})
 
         profile = await build_profile(
