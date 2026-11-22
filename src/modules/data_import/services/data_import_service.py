@@ -1,6 +1,6 @@
 import os
 from datetime import date
-from typing import Callable
+from typing import Callable, Optional
 from uuid import UUID
 
 import asyncpg
@@ -8,6 +8,7 @@ import asyncpg
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import AppError, NotFoundError, ValidationError
 from ....core.http.exception_handlers import describe_db_error
+from ....core.security.facility_scope import in_scope
 from ....core.logger.logger import logger
 from ...health_facility.repositories.health_facility_repositories import healthFacilityRepository
 from ...pregnancy.domain.pregnancy_domain import STATUS_COMPLETED, Pregnancy, PregnancyFilter
@@ -104,17 +105,21 @@ def error_message(err: Exception) -> str:
     return "Error inesperado al guardar la fila"
 
 
-async def process_row(conn, sheet: Sheet, row: list[str], importer: UUID, facilities: FacilityCache) -> tuple[str, str]:
+async def process_row(
+    conn, sheet: Sheet, row: list[str], importer: UUID, facilities: FacilityCache, scope: Optional[UUID] = None
+) -> tuple[str, str]:
     code = sheet.get(row, "codigo").upper()
     dni = sheet.get(row, "dni")
 
     existing = None
     if code:
         existing = await pregnancyRepository.get_by_code(conn, code)
-        if existing is None:
+        if existing is None or not in_scope(existing.health_facility_id, scope):
             raise AppError(400, f"No existe un registro con el codigo {code} (deja la columna vacia para crear uno nuevo)")
     elif dni:
         existing = await pregnancyRepository.get_open_by_dni(conn, dni)
+        if existing is not None and not in_scope(existing.health_facility_id, scope):
+            raise AppError(409, f"El DNI {dni} ya tiene un registro abierto en otro establecimiento")
 
     if existing is not None:
         before = existing.health_facility_id
@@ -123,12 +128,12 @@ async def process_row(conn, sheet: Sheet, row: list[str], importer: UUID, facili
             existing.delivery_date = None
         if sheet.get(row, "fum") and not sheet.get(row, "fpp"):
             existing.expected_delivery_date = None
-        await pregnancyService.update_in(conn, existing, existing.health_facility_id != before)
+        await pregnancyService.update_in(conn, existing, existing.health_facility_id != before, scope)
         return "updated", existing.code
 
     p = Pregnancy(id=None, first_names="", last_names="", birth_date=None, health_facility_id=None, registered_by=importer)
     await apply_row(sheet, row, p, facilities)
-    await pregnancyService.create_in(conn, p)
+    await pregnancyService.create_in(conn, p, scope)
     return "inserted", p.code
 
 
@@ -138,18 +143,20 @@ def sanitize_file_name(name: str | None) -> str:
 
 
 class DataImportService:
-    async def get_all(self, limit: int, offset: int) -> tuple[list[DataImport], int]:
+    async def get_all(self, limit: int, offset: int, only_by: Optional[UUID] = None) -> tuple[list[DataImport], int]:
         async with connection() as conn:
-            return await dataImportRepository.get_all(conn, limit, offset)
+            return await dataImportRepository.get_all(conn, limit, offset, only_by)
 
-    async def get_by_id(self, import_id: UUID) -> DataImport:
+    async def get_by_id(self, import_id: UUID, only_by: Optional[UUID] = None) -> DataImport:
         async with connection() as conn:
             item = await dataImportRepository.get_by_id(conn, import_id)
-        if item is None:
+        if item is None or (only_by is not None and item.imported_by != only_by):
             raise NotFoundError("Importacion no encontrada")
         return item
 
-    async def import_csv(self, importer: UUID, file_name: str, data: bytes, dry_run: bool) -> DataImport:
+    async def import_csv(
+        self, importer: UUID, file_name: str, data: bytes, dry_run: bool, scope: Optional[UUID] = None
+    ) -> DataImport:
         sheet = read_sheet(data, MAX_ROWS)
         result = DataImport(id=None, file_name=file_name, total_rows=len(sheet.rows), dry_run=dry_run, imported_by=importer)
 
@@ -160,7 +167,7 @@ class DataImportService:
                     savepoint = conn.transaction()
                     await savepoint.start()
                     try:
-                        action, code = await process_row(conn, sheet, row, importer, facilities)
+                        action, code = await process_row(conn, sheet, row, importer, facilities, scope)
                     except Exception as err:
                         await savepoint.rollback()
                         result.failed += 1

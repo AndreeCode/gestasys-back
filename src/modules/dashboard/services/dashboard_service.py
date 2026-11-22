@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from ....core.db.connection import connection, ping
 from ...backup.services.backup_service import backupService
@@ -37,8 +38,8 @@ def describe(table: str, action: str, row: dict, codes: dict[str, str]) -> Optio
 
 
 class DashboardService:
-    async def recent_activity(self, conn, limit: int = 10) -> list[dict]:
-        changes = await dashboardRepository.recent_changes(conn, limit * 3)
+    async def recent_activity(self, conn, limit: int = 10, scope: Optional[UUID] = None) -> list[dict]:
+        changes = await dashboardRepository.recent_changes(conn, limit * 3, scope)
         ids = [
             str(c["row"].get("pregnancy_id"))
             for c in changes
@@ -65,14 +66,14 @@ class DashboardService:
                 break
         return out
 
-    async def get(self) -> dict:
+    async def get(self, scope: Optional[UUID] = None) -> dict:
         async with connection() as conn:
             data = {
-                "stats": await pregnancyRepository.stats(conn, None),
-                "by_facility": await pregnancyRepository.by_facility(conn),
-                "recent_activity": await self.recent_activity(conn),
-                "upcoming_appointments": await dashboardRepository.upcoming_appointments(conn, 7, 10),
-                "due_soon": await dashboardRepository.due_soon(conn, 30, 10),
+                "stats": await pregnancyRepository.stats(conn, scope),
+                "by_facility": await pregnancyRepository.by_facility(conn, scope),
+                "recent_activity": await self.recent_activity(conn, scope=scope),
+                "upcoming_appointments": await dashboardRepository.upcoming_appointments(conn, 7, 10, scope),
+                "due_soon": await dashboardRepository.due_soon(conn, 30, 10, scope),
             }
         backup = await backupService.status()
         last, failure = backup["last_backup"], backup["last_failure"]

@@ -15,9 +15,14 @@ LEFT JOIN users u ON u.id = i.imported_by
 
 
 class DataImportRepository:
-    async def get_all(self, conn: asyncpg.Connection, limit: int, offset: int) -> tuple[list[DataImport], int]:
-        total = await conn.fetchval("SELECT count(*) FROM data_imports")
-        rows = await conn.fetch(SELECT_IMPORT + " ORDER BY i.created_at DESC LIMIT $1 OFFSET $2", limit, offset)
+    async def get_all(
+        self, conn: asyncpg.Connection, limit: int, offset: int, imported_by: Optional[UUID] = None
+    ) -> tuple[list[DataImport], int]:
+        where = " WHERE ($1::uuid IS NULL OR i.imported_by = $1)"
+        total = await conn.fetchval("SELECT count(*) FROM data_imports i" + where, imported_by)
+        rows = await conn.fetch(
+            SELECT_IMPORT + where + " ORDER BY i.created_at DESC LIMIT $2 OFFSET $3", imported_by, limit, offset
+        )
         return [from_row(DataImport, row) for row in rows], total
 
     async def get_by_id(self, conn: asyncpg.Connection, import_id: UUID) -> Optional[DataImport]:

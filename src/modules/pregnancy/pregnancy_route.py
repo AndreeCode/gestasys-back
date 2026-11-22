@@ -1,8 +1,10 @@
 from datetime import date
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
+from ...core.security.facility_scope import facility_scope
 from ...core.security.permission_guard import require_permission
 from ...core.security.principal import current_principal
 from ..data_import.handlers.data_import_handlers import dataImportHandler
@@ -26,8 +28,9 @@ def pregnancy_filter(
     active: Optional[bool] = None,
     due_from: Optional[date] = None,
     due_to: Optional[date] = None,
+    scope: Optional[UUID] = Depends(facility_scope),
 ):
-    return build_filter(q, health_facility_id, status, risk_level, active, due_from, due_to)
+    return build_filter(q, health_facility_id, status, risk_level, active, due_from, due_to, scope)
 
 
 @router.get("", dependencies=[Depends(require_permission("pregnancy.get"))])
@@ -38,8 +41,8 @@ async def get_all_pregnancies(
 
 
 @router.get("/stats", dependencies=[Depends(require_permission("pregnancy.get"))])
-async def get_pregnancy_stats(health_facility_id: Optional[str] = None):
-    return await pregnancyHandler.stats(health_facility_id)
+async def get_pregnancy_stats(health_facility_id: Optional[str] = None, scope: Optional[UUID] = Depends(facility_scope)):
+    return await pregnancyHandler.stats(health_facility_id, scope)
 
 
 @router.get("/export", dependencies=[Depends(require_permission("pregnancy.export"))])
@@ -54,24 +57,28 @@ async def import_template():
 
 @router.post("/import", dependencies=[Depends(require_permission("pregnancy.import"))])
 async def import_pregnancies(request: Request, file: UploadFile = File(...), dry_run: bool = False):
-    return await dataImportHandler.import_file(current_principal(request).user_id, file, dry_run)
+    principal = current_principal(request)
+    return await dataImportHandler.import_file(principal.user_id, principal.health_facility_id, file, dry_run)
 
 
 @router.get("/{pregnancy_id}", dependencies=[Depends(require_permission("pregnancy.get"))])
-async def get_pregnancy_by_id(pregnancy_id: str):
-    return await pregnancyHandler.get_by_id(pregnancy_id)
+async def get_pregnancy_by_id(pregnancy_id: str, scope: Optional[UUID] = Depends(facility_scope)):
+    return await pregnancyHandler.get_by_id(pregnancy_id, scope)
 
 
 @router.post("", dependencies=[Depends(require_permission("pregnancy.post"))])
 async def create_pregnancy(request: Request, body: PregnancyCreateRequest):
-    return await pregnancyHandler.create(current_principal(request).user_id, body)
+    principal = current_principal(request)
+    return await pregnancyHandler.create(principal.user_id, principal.health_facility_id, body)
 
 
 @router.put("/{pregnancy_id}", dependencies=[Depends(require_permission("pregnancy.put"))])
-async def update_pregnancy(pregnancy_id: str, body: PregnancyUpdateRequest):
-    return await pregnancyHandler.update(pregnancy_id, body)
+async def update_pregnancy(
+    pregnancy_id: str, body: PregnancyUpdateRequest, scope: Optional[UUID] = Depends(facility_scope)
+):
+    return await pregnancyHandler.update(pregnancy_id, body, scope)
 
 
 @router.delete("/{pregnancy_id}", dependencies=[Depends(require_permission("pregnancy.delete"))])
-async def delete_pregnancy(pregnancy_id: str):
-    return await pregnancyHandler.delete(pregnancy_id)
+async def delete_pregnancy(pregnancy_id: str, scope: Optional[UUID] = Depends(facility_scope)):
+    return await pregnancyHandler.delete(pregnancy_id, scope)

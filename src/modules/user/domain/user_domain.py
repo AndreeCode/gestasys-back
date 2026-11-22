@@ -17,6 +17,8 @@ class User:
     role: Optional[str] = None
     dni: Optional[str] = None
     phone: Optional[str] = None
+    health_facility_id: Optional[UUID] = None
+    health_facility_name: Optional[str] = None
     active: bool = True
     blocked: bool = False
     blocked_reason: Optional[str] = None

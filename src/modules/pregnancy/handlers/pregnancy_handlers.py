@@ -9,6 +9,7 @@ from ....core.http.list import list_response
 from ....core.http.request_models import StrictModel
 from ....core.http.success import success
 from ....core.http.uuid_param import parse_optional_uuid, parse_uuid
+from ....core.security.facility_scope import restrict_facility
 from ..domain.pregnancy_domain import PregnancyFilter
 from ..services.pregnancy_service import pregnancyService
 
@@ -72,10 +73,11 @@ def build_filter(
     active: Optional[bool],
     due_from: Optional[date],
     due_to: Optional[date],
+    scope: Optional[UUID] = None,
 ) -> PregnancyFilter:
     return PregnancyFilter(
         q=(q or "").strip() or None,
-        health_facility_id=parse_optional_uuid(health_facility_id, "health_facility_id"),
+        health_facility_id=restrict_facility(parse_optional_uuid(health_facility_id, "health_facility_id"), scope),
         status=status,
         risk_level=risk_level,
         active=True if active is None else active,
@@ -94,24 +96,27 @@ class PregnancyHandler:
             {"total": total, "limit": limit, "offset": offset},
         )
 
-    async def stats(self, health_facility_id: Optional[str]):
-        stats = await pregnancyService.stats(parse_optional_uuid(health_facility_id, "health_facility_id"))
+    async def stats(self, health_facility_id: Optional[str], scope: Optional[UUID] = None):
+        facility = restrict_facility(parse_optional_uuid(health_facility_id, "health_facility_id"), scope)
+        stats = await pregnancyService.stats(facility)
         return success(200, "Estadisticas obtenidas correctamente", stats)
 
-    async def get_by_id(self, pregnancy_id: str):
-        p = await pregnancyService.get_by_id(parse_uuid(pregnancy_id, "pregnancy_id"))
+    async def get_by_id(self, pregnancy_id: str, scope: Optional[UUID] = None):
+        p = await pregnancyService.get_by_id(parse_uuid(pregnancy_id, "pregnancy_id"), scope)
         return success(200, "Registro obtenido correctamente", p.to_dict())
 
-    async def create(self, registered_by: UUID, body: PregnancyCreateRequest):
-        p = await pregnancyService.create(registered_by, body.model_dump())
+    async def create(self, registered_by: UUID, scope: Optional[UUID], body: PregnancyCreateRequest):
+        p = await pregnancyService.create(registered_by, body.model_dump(), scope)
         return success(201, f"Registro {p.code} creado correctamente", p.to_dict())
 
-    async def update(self, pregnancy_id: str, body: PregnancyUpdateRequest):
-        p = await pregnancyService.update(parse_uuid(pregnancy_id, "pregnancy_id"), body.model_dump(exclude_unset=True))
+    async def update(self, pregnancy_id: str, body: PregnancyUpdateRequest, scope: Optional[UUID] = None):
+        p = await pregnancyService.update(
+            parse_uuid(pregnancy_id, "pregnancy_id"), body.model_dump(exclude_unset=True), scope
+        )
         return success(200, f"Registro {p.code} actualizado correctamente", p.to_dict())
 
-    async def delete(self, pregnancy_id: str):
-        await pregnancyService.delete(parse_uuid(pregnancy_id, "pregnancy_id"))
+    async def delete(self, pregnancy_id: str, scope: Optional[UUID] = None):
+        await pregnancyService.delete(parse_uuid(pregnancy_id, "pregnancy_id"), scope)
         return success(200, "Registro eliminado correctamente")
 
 

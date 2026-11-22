@@ -24,7 +24,7 @@ PUBLIC_PATHS = {
 PASSWORD_CHANGE_PATHS = {"/api/auth/me", "/api/auth/password"}
 
 SESSION_QUERY = """
-SELECT s.id, s.user_id, s.device_id, u.username, u.role_id, u.must_change_password
+SELECT s.id, s.user_id, s.device_id, u.username, u.role_id, u.must_change_password, u.health_facility_id
 FROM sessions s
 JOIN devices d ON d.id = s.device_id
 JOIN users u ON u.id = s.user_id
@@ -70,6 +70,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             username=row["username"],
             role_id=row["role_id"],
             must_change_password=row["must_change_password"],
+            health_facility_id=row["health_facility_id"],
         )
 
         if principal.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:

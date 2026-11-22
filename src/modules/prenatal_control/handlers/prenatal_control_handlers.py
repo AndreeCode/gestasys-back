@@ -39,24 +39,30 @@ class PrenatalControlUpdateRequest(StrictModel):
 
 
 class PrenatalControlHandler:
-    async def get_all(self, pregnancy_id: Optional[str], date_from: Optional[date], date_to: Optional[date]):
-        items = await prenatalControlService.get_all(parse_optional_uuid(pregnancy_id, "pregnancy_id"), date_from, date_to)
+    async def get_all(
+        self, pregnancy_id: Optional[str], date_from: Optional[date], date_to: Optional[date], scope: Optional[UUID] = None
+    ):
+        items = await prenatalControlService.get_all(
+            parse_optional_uuid(pregnancy_id, "pregnancy_id"), date_from, date_to, scope
+        )
         return list_response(200, "Controles obtenidos correctamente", [c.to_dict() for c in items], {"total": len(items)})
 
-    async def get_by_id(self, control_id: str):
-        c = await prenatalControlService.get_by_id(parse_uuid(control_id, "prenatal_control_id"))
+    async def get_by_id(self, control_id: str, scope: Optional[UUID] = None):
+        c = await prenatalControlService.get_by_id(parse_uuid(control_id, "prenatal_control_id"), scope)
         return success(200, "Control obtenido correctamente", c.to_dict())
 
-    async def create(self, registered_by: UUID, body: PrenatalControlCreateRequest):
-        c = await prenatalControlService.create(registered_by, body.model_dump())
+    async def create(self, registered_by: UUID, scope: Optional[UUID], body: PrenatalControlCreateRequest):
+        c = await prenatalControlService.create(registered_by, body.model_dump(), scope)
         return success(201, "Control registrado correctamente", c.to_dict())
 
-    async def update(self, control_id: str, body: PrenatalControlUpdateRequest):
-        c = await prenatalControlService.update(parse_uuid(control_id, "prenatal_control_id"), body.model_dump(exclude_unset=True))
+    async def update(self, control_id: str, body: PrenatalControlUpdateRequest, scope: Optional[UUID] = None):
+        c = await prenatalControlService.update(
+            parse_uuid(control_id, "prenatal_control_id"), body.model_dump(exclude_unset=True), scope
+        )
         return success(200, "Control actualizado correctamente", c.to_dict())
 
-    async def delete(self, control_id: str):
-        await prenatalControlService.delete(parse_uuid(control_id, "prenatal_control_id"))
+    async def delete(self, control_id: str, scope: Optional[UUID] = None):
+        await prenatalControlService.delete(parse_uuid(control_id, "prenatal_control_id"), scope)
         return success(200, "Control eliminado correctamente")
 
 

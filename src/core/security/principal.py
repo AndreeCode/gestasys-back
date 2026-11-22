@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Optional
 from uuid import UUID
 
 from fastapi import Request
@@ -14,6 +15,7 @@ class Principal:
     username: str
     role_id: UUID
     must_change_password: bool
+    health_facility_id: Optional[UUID] = None
 
 
 def current_principal(request: Request) -> Principal:

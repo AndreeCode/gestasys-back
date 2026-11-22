@@ -24,23 +24,34 @@ VALUES = (
 
 class PrenatalControlRepository:
     async def get_all(
-        self, conn: asyncpg.Connection, pregnancy_id: Optional[UUID], date_from: Optional[date], date_to: Optional[date]
+        self,
+        conn: asyncpg.Connection,
+        pregnancy_id: Optional[UUID],
+        date_from: Optional[date],
+        date_to: Optional[date],
+        facility_id: Optional[UUID] = None,
     ) -> list[PrenatalControl]:
         rows = await conn.fetch(
             SELECT_CONTROL
             + """
             WHERE p.active AND ($1::uuid IS NULL OR c.pregnancy_id = $1)
               AND ($2::date IS NULL OR c.control_date >= $2) AND ($3::date IS NULL OR c.control_date <= $3)
+              AND ($4::uuid IS NULL OR p.health_facility_id = $4)
             ORDER BY c.control_date DESC, c.created_at DESC
             """,
             pregnancy_id,
             date_from,
             date_to,
+            facility_id,
         )
         return [from_row(PrenatalControl, row) for row in rows]
 
-    async def get_by_id(self, conn: asyncpg.Connection, control_id: UUID) -> Optional[PrenatalControl]:
-        row = await conn.fetchrow(SELECT_CONTROL + " WHERE c.id = $1", control_id)
+    async def get_by_id(
+        self, conn: asyncpg.Connection, control_id: UUID, facility_id: Optional[UUID] = None
+    ) -> Optional[PrenatalControl]:
+        row = await conn.fetchrow(
+            SELECT_CONTROL + " WHERE c.id = $1 AND ($2::uuid IS NULL OR p.health_facility_id = $2)", control_id, facility_id
+        )
         return from_row(PrenatalControl, row) if row else None
 
     async def create(self, conn: asyncpg.Connection, c: PrenatalControl) -> UUID:

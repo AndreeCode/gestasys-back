@@ -8,10 +8,11 @@ from ..domain.user_domain import User
 
 SELECT_USER = """
 SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name AS role, u.full_name, u.dni, u.phone,
-       u.active, u.blocked, u.blocked_reason, u.must_change_password, u.password_changed_at,
+       u.health_facility_id, f.name AS health_facility_name, u.active, u.blocked, u.blocked_reason, u.must_change_password, u.password_changed_at,
        u.failed_attempts, u.locked_until, u.last_login_at, u.created_by, u.created_at, u.updated_at
 FROM users u
 JOIN roles r ON r.id = u.role_id
+LEFT JOIN health_facilities f ON f.id = u.health_facility_id
 """
 
 
@@ -23,6 +24,7 @@ class UserRepository:
         role_id: Optional[UUID],
         active: Optional[bool],
         blocked: Optional[bool],
+        facility_id: Optional[UUID] = None,
     ) -> list[User]:
         rows = await conn.fetch(
             SELECT_USER
@@ -32,12 +34,14 @@ class UserRepository:
               AND ($2::uuid IS NULL OR u.role_id = $2)
               AND ($3::bool IS NULL OR u.active = $3)
               AND ($4::bool IS NULL OR u.blocked = $4)
+              AND ($5::uuid IS NULL OR u.health_facility_id = $5)
             ORDER BY u.full_name
             """,
             q,
             role_id,
             active,
             blocked,
+            facility_id,
         )
         return [from_row(User, row) for row in rows]
 
@@ -61,8 +65,8 @@ class UserRepository:
         return await conn.fetchval(
             """
             INSERT INTO users (username, email, password_hash, role_id, full_name, dni, phone, active,
-                               must_change_password, password_changed_at, created_by)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10)
+                               must_change_password, password_changed_at, created_by, health_facility_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), $10, $11)
             RETURNING id
             """,
             user.username,
@@ -75,13 +79,14 @@ class UserRepository:
             user.active,
             user.must_change_password,
             user.created_by,
+            user.health_facility_id,
         )
 
     async def update(self, conn: asyncpg.Connection, user: User) -> None:
         await conn.execute(
             """
             UPDATE users SET username = $2, email = $3, role_id = $4, full_name = $5, dni = $6, phone = $7,
-                   active = $8, blocked = $9, blocked_reason = $10
+                   active = $8, blocked = $9, blocked_reason = $10, health_facility_id = $11
             WHERE id = $1
             """,
             user.id,
@@ -94,6 +99,7 @@ class UserRepository:
             user.active,
             user.blocked,
             user.blocked_reason,
+            user.health_facility_id,
         )
 
     async def set_password(self, conn: asyncpg.Connection, user_id: UUID, password_hash: str, must_change: bool) -> None:

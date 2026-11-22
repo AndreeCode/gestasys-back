@@ -72,6 +72,8 @@ Módulos: `auth`, `user`, `role`, `permission`, `health_facility`, `pregnancy`, 
   - Nadie puede asignar roles, otorgar permisos ni editar usuarios con permisos que no tenga él mismo.
   - Nadie puede desactivarse, bloquearse ni cambiarse el rol a sí mismo.
   - El rol `admin` es fijo.
+- **Alcance por establecimiento** (`users.health_facility_id`, migración `001`): si un usuario tiene establecimiento asignado, solo ve y modifica las gestantes, los controles, el dashboard, el export y la importación de ese establecimiento. Un registro de otro establecimiento responde 404, y filtrar por otro establecimiento responde 403. En la importación ve solo las suyas. Con `NULL` ve todo (admin, coordinador de red).
+  - Un usuario limitado solo crea y administra usuarios de su mismo establecimiento, y no puede quitarles el límite ni moverlos. Nadie puede cambiar su propio establecimiento.
 - **Auditoría**: el trigger `audit_changes()` registra cada cambio en `audit_log`, sin hashes. Además se registran los eventos LOGIN, LOGIN_FAILED, LOGOUT y PASSWORD_CHANGED.
 
 ## Endpoints

@@ -150,7 +150,7 @@ class PregnancyRepository:
         s["pending_percent"] = pct(s["pending"], s["total"])
         return s
 
-    async def by_facility(self, conn: asyncpg.Connection) -> list[dict]:
+    async def by_facility(self, conn: asyncpg.Connection, facility_id: Optional[UUID] = None) -> list[dict]:
         rows = await conn.fetch(
             """
             SELECT f.id AS health_facility_id, f.name AS health_facility_name,
@@ -160,10 +160,11 @@ class PregnancyRepository:
                    count(p.id) FILTER (WHERE p.status = 'completed')::int AS completed
             FROM health_facilities f
             LEFT JOIN pregnancies p ON p.health_facility_id = f.id AND p.active
-            WHERE f.active
+            WHERE f.active AND ($1::uuid IS NULL OR f.id = $1)
             GROUP BY f.id, f.name
             ORDER BY count(p.id) DESC, f.name
-            """
+            """,
+            facility_id,
         )
         return [dict(row) for row in rows]
 

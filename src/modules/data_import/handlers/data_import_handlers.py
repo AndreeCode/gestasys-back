@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 from uuid import UUID
 
 from fastapi import UploadFile
@@ -14,7 +15,7 @@ from ..services.data_import_service import dataImportService, sanitize_file_name
 
 
 class DataImportHandler:
-    async def import_file(self, importer: UUID, file: UploadFile, dry_run: bool):
+    async def import_file(self, importer: UUID, scope: Optional[UUID], file: UploadFile, dry_run: bool):
         name = sanitize_file_name(file.filename)
         if not name.lower().endswith((".csv", ".txt")):
             raise ValidationError("Solo se aceptan archivos .csv")
@@ -22,7 +23,7 @@ class DataImportHandler:
         if len(data) > config.import_max_bytes:
             raise AppError(413, f"El archivo supera el maximo de {config.import_max_bytes // 1024 // 1024} MB")
 
-        result = await dataImportService.import_csv(importer, name, data, dry_run)
+        result = await dataImportService.import_csv(importer, name, data, dry_run, scope)
         counts = f"{result.inserted} nuevos, {result.updated} actualizados, {result.failed} con errores"
         if dry_run:
             return success(200, f"Validacion completada (no se guardo nada): {counts}", result.to_dict())
@@ -44,8 +45,8 @@ class DataImportHandler:
             headers={"Content-Disposition": 'attachment; filename="plantilla-registros.csv"'},
         )
 
-    async def get_all(self, limit: int, offset: int):
-        items, total = await dataImportService.get_all(limit, offset)
+    async def get_all(self, limit: int, offset: int, only_by: Optional[UUID] = None):
+        items, total = await dataImportService.get_all(limit, offset, only_by)
         return list_response(
             200,
             "Importaciones obtenidas correctamente",
@@ -53,8 +54,8 @@ class DataImportHandler:
             {"total": total, "limit": limit, "offset": offset},
         )
 
-    async def get_by_id(self, import_id: str):
-        item = await dataImportService.get_by_id(parse_uuid(import_id, "import_id"))
+    async def get_by_id(self, import_id: str, only_by: Optional[UUID] = None):
+        item = await dataImportService.get_by_id(parse_uuid(import_id, "import_id"), only_by)
         return success(200, "Importacion obtenida correctamente", item.to_dict())
 
 
