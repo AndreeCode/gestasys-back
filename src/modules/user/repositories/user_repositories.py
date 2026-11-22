@@ -8,7 +8,7 @@ from ..domain.user_domain import User
 
 SELECT_USER = """
 SELECT u.id, u.username, u.email, u.password_hash, u.role_id, r.name AS role, u.full_name, u.dni, u.phone,
-       u.health_facility_id, f.name AS health_facility_name, u.active, u.blocked, u.blocked_reason, u.must_change_password, u.password_changed_at,
+       u.health_facility_id, f.name AS health_facility_name, u.mfa_enabled, u.active, u.blocked, u.blocked_reason, u.must_change_password, u.password_changed_at,
        u.failed_attempts, u.locked_until, u.last_login_at, u.created_by, u.created_at, u.updated_at
 FROM users u
 JOIN roles r ON r.id = u.role_id
@@ -116,6 +116,60 @@ class UserRepository:
 
     async def rehash_password(self, conn: asyncpg.Connection, user_id: UUID, password_hash: str) -> None:
         await conn.execute("UPDATE users SET password_hash = $2 WHERE id = $1", user_id, password_hash)
+
+    async def get_mfa(self, conn: asyncpg.Connection, user_id: UUID) -> Optional[asyncpg.Record]:
+        return await conn.fetchrow(
+            """
+            SELECT mfa_enabled, mfa_secret, mfa_pending_secret, mfa_last_step, mfa_recovery_codes, mfa_enabled_at
+            FROM users WHERE id = $1
+            """,
+            user_id,
+        )
+
+    async def set_mfa_pending(self, conn: asyncpg.Connection, user_id: UUID, sealed_secret: str) -> None:
+        await conn.execute("UPDATE users SET mfa_pending_secret = $2 WHERE id = $1", user_id, sealed_secret)
+
+    async def enable_mfa(self, conn: asyncpg.Connection, user_id: UUID, sealed_secret: str, step: int, recovery: list[str]) -> None:
+        await conn.execute(
+            """
+            UPDATE users SET mfa_enabled = TRUE, mfa_secret = $2, mfa_pending_secret = NULL, mfa_last_step = $3,
+                   mfa_recovery_codes = $4, mfa_enabled_at = NOW()
+            WHERE id = $1
+            """,
+            user_id,
+            sealed_secret,
+            step,
+            recovery,
+        )
+
+    async def clear_mfa(self, conn: asyncpg.Connection, user_id: UUID) -> None:
+        await conn.execute(
+            """
+            UPDATE users SET mfa_enabled = FALSE, mfa_secret = NULL, mfa_pending_secret = NULL, mfa_last_step = NULL,
+                   mfa_recovery_codes = '{}', mfa_enabled_at = NULL
+            WHERE id = $1
+            """,
+            user_id,
+        )
+
+    async def set_mfa_step(self, conn: asyncpg.Connection, user_id: UUID, step: int) -> bool:
+        result = await conn.execute(
+            "UPDATE users SET mfa_last_step = $2 WHERE id = $1 AND (mfa_last_step IS NULL OR mfa_last_step < $2)",
+            user_id,
+            step,
+        )
+        return result.endswith(" 1")
+
+    async def consume_recovery_code(self, conn: asyncpg.Connection, user_id: UUID, code_hash: str) -> bool:
+        result = await conn.execute(
+            """
+            UPDATE users SET mfa_recovery_codes = array_remove(mfa_recovery_codes, $2)
+            WHERE id = $1 AND $2 = ANY(mfa_recovery_codes)
+            """,
+            user_id,
+            code_hash,
+        )
+        return result.endswith(" 1")
 
     async def unlock(self, conn: asyncpg.Connection, user_id: UUID) -> None:
         await conn.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = $1", user_id)

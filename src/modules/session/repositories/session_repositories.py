@@ -54,6 +54,30 @@ class SessionRepository:
             reason,
         )
 
+    async def list_active_for_user(self, conn: asyncpg.Connection, user_id: UUID) -> list[dict]:
+        rows = await conn.fetch(
+            """
+            SELECT s.id, s.created_at, s.last_activity_at, s.expires_at, host(s.ip_address) AS ip_address, s.user_agent
+            FROM sessions s
+            WHERE s.user_id = $1 AND NOT s.revoked AND s.expires_at > NOW()
+            ORDER BY s.last_activity_at DESC
+            """,
+            user_id,
+        )
+        return [dict(row) for row in rows]
+
+    async def revoke_own(self, conn: asyncpg.Connection, user_id: UUID, session_id: UUID, reason: str) -> bool:
+        result = await conn.execute(
+            """
+            UPDATE sessions SET revoked = TRUE, revoked_reason = $3, revoked_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND NOT revoked
+            """,
+            session_id,
+            user_id,
+            reason,
+        )
+        return result.endswith(" 1")
+
     async def revoke(self, conn: asyncpg.Connection, session_id: UUID, reason: str) -> None:
         await conn.execute(
             "UPDATE sessions SET revoked = TRUE, revoked_reason = $2, revoked_at = NOW() WHERE id = $1", session_id, reason

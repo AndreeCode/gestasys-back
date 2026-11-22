@@ -9,6 +9,7 @@ from ....core.http.request_models import StrictModel
 from ....core.http.success import success
 from ....core.http.uuid_param import parse_optional_uuid, parse_uuid
 from ....core.security.facility_scope import restrict_facility
+from ...auth.services.mfa_service import mfaService
 from ..services.user_service import userService
 
 register_constraints(
@@ -81,6 +82,10 @@ class UserHandler:
     async def delete(self, caller_id: UUID, scope: Optional[UUID], user_id: str):
         await userService.delete(caller_id, parse_uuid(user_id, "user_id"), scope)
         return success(200, "Usuario desactivado correctamente")
+
+    async def reset_mfa(self, caller_id: UUID, scope: Optional[UUID], user_id: str):
+        await mfaService.reset(caller_id, parse_uuid(user_id, "user_id"), scope)
+        return success(200, "Verificacion en dos pasos restablecida: el usuario debera configurarla de nuevo")
 
 
 userHandler = UserHandler()

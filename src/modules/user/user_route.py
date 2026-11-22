@@ -44,3 +44,9 @@ async def update_user(request: Request, user_id: str, body: UserUpdateRequest):
 async def delete_user(request: Request, user_id: str):
     principal = current_principal(request)
     return await userHandler.delete(principal.user_id, principal.health_facility_id, user_id)
+
+
+@router.delete("/{user_id}/mfa", dependencies=[Depends(require_permission("user.put"))])
+async def reset_user_mfa(request: Request, user_id: str):
+    principal = current_principal(request)
+    return await userHandler.reset_mfa(principal.user_id, principal.health_facility_id, user_id)

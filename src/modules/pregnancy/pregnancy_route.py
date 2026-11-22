@@ -10,6 +10,7 @@ from ...core.security.principal import current_principal
 from ..data_import.handlers.data_import_handlers import dataImportHandler
 from .handlers.pregnancy_handlers import (
     PregnancyCreateRequest,
+    PregnancySearchRequest,
     PregnancyUpdateRequest,
     Risk,
     Status,
@@ -38,6 +39,22 @@ async def get_all_pregnancies(
     f=Depends(pregnancy_filter), limit: int = Query(25, ge=1, le=500), offset: int = Query(0, ge=0)
 ):
     return await pregnancyHandler.get_all(f, limit, offset)
+
+
+def body_filter(body: PregnancySearchRequest, scope: Optional[UUID]):
+    return build_filter(
+        body.q, body.health_facility_id, body.status, body.risk_level, body.active, body.due_from, body.due_to, scope
+    )
+
+
+@router.post("/search", dependencies=[Depends(require_permission("pregnancy.get"))])
+async def search_pregnancies(body: PregnancySearchRequest, scope: Optional[UUID] = Depends(facility_scope)):
+    return await pregnancyHandler.get_all(body_filter(body, scope), body.limit, body.offset)
+
+
+@router.post("/export", dependencies=[Depends(require_permission("pregnancy.export"))])
+async def export_pregnancies_post(body: PregnancySearchRequest, scope: Optional[UUID] = Depends(facility_scope)):
+    return await dataImportHandler.export(body_filter(body, scope), body.delimiter)
 
 
 @router.get("/stats", dependencies=[Depends(require_permission("pregnancy.get"))])

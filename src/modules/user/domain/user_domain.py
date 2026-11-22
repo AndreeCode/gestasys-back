@@ -23,6 +23,7 @@ class User:
     blocked: bool = False
     blocked_reason: Optional[str] = None
     must_change_password: bool = False
+    mfa_enabled: bool = False
     password_changed_at: Optional[datetime] = None
     failed_attempts: int = 0
     locked_until: Optional[datetime] = None

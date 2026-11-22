@@ -1,3 +1,4 @@
+import base64
 import hashlib
 import hmac
 import logging
@@ -33,22 +34,40 @@ def _list(key: str, default: str) -> list[str]:
     return [item.strip() for item in os.getenv(key, default).split(",") if item.strip()]
 
 
+def _secret(key: str, default: str = "") -> str:
+    path = os.getenv(f"{key}_FILE")
+    if path:
+        try:
+            with open(path, encoding="utf-8") as source:
+                return source.read().strip()
+        except OSError as err:
+            raise RuntimeError(f"No se pudo leer {key}_FILE ({path}): {err}") from err
+    return os.getenv(key, default).strip()
+
+
 class Config:
     app_env: str = os.getenv("APP_ENV", "development").strip().lower()
     dbhost: str = os.getenv("DB_HOST", "127.0.0.1")
     dbport: int = _int("DB_PORT", 5432)
     dbname: str = os.getenv("DB_NAME", "gestasys")
     dbuser: str = os.getenv("DB_USER", "postgres")
-    dbpassword: str = os.getenv("DB_PASSWORD", "")
+    dbpassword: str = _secret("DB_PASSWORD")
     db_admin_user: str = os.getenv("DB_ADMIN_USER", "")
-    db_admin_password: str = os.getenv("DB_ADMIN_PASSWORD", "")
+    db_admin_password: str = _secret("DB_ADMIN_PASSWORD")
     db_pool_max: int = _int("DB_POOL_MAX", 10)
     db_sslmode: str = os.getenv("DB_SSLMODE", "prefer").strip().lower()
 
-    jwt_secret: str = os.getenv("JWT_SECRET", "")
+    jwt_secret: str = _secret("JWT_SECRET")
     jwt_algorithm: str = os.getenv("JWT_ALGORITHM", "HS256")
     jwt_expire_minutes: int = _int("JWT_EXPIRE_MINUTES", 60)
-    audit_chain_key_env: str = os.getenv("AUDIT_CHAIN_KEY", "").strip()
+    audit_chain_key_env: str = _secret("AUDIT_CHAIN_KEY")
+
+    temp_password_hours: int = _int("TEMP_PASSWORD_HOURS", 72)
+    session_idle_minutes: int = _int("SESSION_IDLE_MINUTES", 30)
+    mfa_required: bool = _bool("MFA_REQUIRED", os.getenv("APP_ENV", "").strip().lower() == "production")
+    mfa_roles: set[str] = set(_list("MFA_ROLES", "admin,coordinador"))
+    mfa_issuer: str = os.getenv("MFA_ISSUER", "GestaSys")
+    mfa_encryption_key_env: str = _secret("MFA_ENCRYPTION_KEY")
 
     cookie_secure: bool = _bool("COOKIE_SECURE", False) or os.getenv("APP_ENV", "").strip().lower() == "production"
     cookie_samesite: str = os.getenv("COOKIE_SAMESITE", "lax").lower()
@@ -69,7 +88,7 @@ class Config:
     backup_minute: int = _int("BACKUP_MINUTE", 0)
     backup_keep: int = _int("BACKUP_KEEP", 14)
     pg_dump_path: str = os.getenv("PG_DUMP_PATH", "pg_dump")
-    backup_encryption_key: str = os.getenv("BACKUP_ENCRYPTION_KEY", "").strip()
+    backup_encryption_key: str = _secret("BACKUP_ENCRYPTION_KEY")
 
     @property
     def is_production(self) -> bool:
@@ -91,6 +110,13 @@ class Config:
         if self.audit_chain_key_env:
             return self.audit_chain_key_env
         return hmac.new(self.jwt_secret.encode(), b"audit-chain-v1", hashlib.sha256).hexdigest()
+
+    @property
+    def mfa_key(self) -> bytes:
+        if self.mfa_encryption_key_env:
+            raw = self.mfa_encryption_key_env
+            return base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4))
+        return hmac.new(self.jwt_secret.encode(), b"mfa-secret-box-v1", hashlib.sha256).digest()
 
     def problems(self) -> list[str]:
         found = []
@@ -121,6 +147,14 @@ class Config:
             found.append("AUDIT_CHAIN_KEY debe tener al menos 32 caracteres")
         elif self.is_production and not self.audit_chain_key_env:
             found.append("AUDIT_CHAIN_KEY es obligatorio en produccion (clave del HMAC de la cadena de auditoria)")
+        if self.mfa_encryption_key_env:
+            try:
+                if len(self.mfa_key) != 32:
+                    found.append("MFA_ENCRYPTION_KEY debe decodificar a 32 bytes (base64)")
+            except ValueError:
+                found.append("MFA_ENCRYPTION_KEY no es base64 valido")
+        elif self.is_production:
+            found.append("MFA_ENCRYPTION_KEY es obligatorio en produccion (python -m scripts.backup_key --generate sirve para crearla)")
         return found
 
     def ensure_valid(self) -> None:

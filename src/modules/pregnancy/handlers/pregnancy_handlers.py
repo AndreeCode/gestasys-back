@@ -65,6 +65,19 @@ class PregnancyUpdateRequest(StrictModel):
     active: Optional[bool] = None
 
 
+class PregnancySearchRequest(StrictModel):
+    q: Optional[str] = Field(default=None, max_length=120)
+    health_facility_id: Optional[str] = None
+    status: Optional[Status] = None
+    risk_level: Optional[Risk] = None
+    active: Optional[bool] = None
+    due_from: Optional[date] = None
+    due_to: Optional[date] = None
+    limit: int = Field(default=25, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+    delimiter: Optional[str] = None
+
+
 def build_filter(
     q: Optional[str],
     health_facility_id: Optional[str],

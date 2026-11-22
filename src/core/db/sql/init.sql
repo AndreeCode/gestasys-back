@@ -306,7 +306,8 @@ DECLARE
     v_record_key JSONB;
     v_details JSONB;
     v_col TEXT;
-    v_noise TEXT[] := ARRAY['updated_at', 'last_seen_at', 'last_login_at', 'failed_attempts', 'locked_until'];
+    v_noise TEXT[] := ARRAY['updated_at', 'last_seen_at', 'last_login_at', 'failed_attempts', 'locked_until',
+                            'last_activity_at', 'mfa_last_step'];
 BEGIN
     SELECT * INTO v_actor FROM audit_actor();
 
@@ -328,8 +329,8 @@ BEGIN
         END LOOP;
     END IF;
 
-    v_old := v_old - 'password_hash' - 'token_hash';
-    v_new := v_new - 'password_hash' - 'token_hash';
+    v_old := v_old - 'password_hash' - 'token_hash' - 'mfa_secret' - 'mfa_pending_secret' - 'mfa_recovery_codes';
+    v_new := v_new - 'password_hash' - 'token_hash' - 'mfa_secret' - 'mfa_pending_secret' - 'mfa_recovery_codes';
 
     IF TG_OP = 'UPDATE' AND (v_old - v_noise) = (v_new - v_noise) THEN
         RETURN NEW;
@@ -363,7 +364,8 @@ AS $$
 DECLARE
     v_actor RECORD;
 BEGIN
-    IF p_action NOT IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'PASSWORD_CHANGED') THEN
+    IF p_action NOT IN ('LOGIN', 'LOGIN_FAILED', 'LOGOUT', 'PASSWORD_CHANGED', 'MFA_ENABLED', 'MFA_DISABLED',
+                        'MFA_RESET', 'MFA_FAILED', 'SESSION_IDLE', 'SESSION_REVOKED') THEN
         RAISE EXCEPTION 'Accion de autenticacion no permitida: %', p_action;
     END IF;
 

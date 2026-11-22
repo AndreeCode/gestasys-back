@@ -66,6 +66,9 @@ class UserService:
             raise BadRequestError("El rol indicado esta inactivo")
         await roleService.ensure_can_assign(caller_id, role)
 
+    async def ensure_can_manage(self, caller_id: UUID, target: User) -> None:
+        await self._ensure_can_manage(caller_id, target)
+
     async def _ensure_can_manage(self, caller_id: UUID, target: User) -> None:
         if caller_id == target.id:
             return

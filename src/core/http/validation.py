@@ -45,10 +45,6 @@ class Validator:
             self.add(f"{field} debe tener al menos 8 caracteres")
             return
         self.check(len(value) <= 128, f"{field} no debe superar 128 caracteres")
-        self.check(
-            any(c.isdigit() for c in value) and any(c.isalpha() for c in value),
-            f"{field} debe combinar letras y numeros",
-        )
         lowered = value.lower()
         self.check(
             lowered not in COMMON_PASSWORDS and lowered.rstrip("!.*#$@") not in COMMON_PASSWORDS,
