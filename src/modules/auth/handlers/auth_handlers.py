@@ -13,6 +13,7 @@ from ....core.http.error import error
 from ....core.http.request_models import StrictModel
 from ....core.http.success import success
 from ....core.logger.logger import logger
+from ....core.security.client_ip import client_ip
 from ....core.security.cookies import (
     ACCESS_TOKEN_COOKIE,
     DEVICE_TOKEN_COOKIE,
@@ -55,7 +56,7 @@ async def build_profile(user_id, session: dict) -> dict:
 
 class AuthHandler:
     async def login(self, request: Request, body: LoginRequest):
-        ip = request.client.host if request.client else None
+        ip = client_ip(request)
         if not allow_login_attempt(ip):
             return error(429, "Demasiados intentos de inicio de sesion, espera un minuto")
 
@@ -142,7 +143,7 @@ class AuthHandler:
                 set_audit_context(
                     user_id=payload.get("sub"),
                     device_id=payload.get("did"),
-                    ip=request.client.host if request.client else None,
+                    ip=client_ip(request),
                     user_agent=request.headers.get("user-agent"),
                 )
                 await sessionService.revoke_by_token(hash_token(token), "logout")

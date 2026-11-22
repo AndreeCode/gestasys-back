@@ -5,6 +5,7 @@ from starlette.requests import Request
 from ..db.audit_context import set_audit_context
 from ..db.connection import fetchrow
 from ..http.error import error
+from .client_ip import client_ip
 from .cookies import ACCESS_TOKEN_COOKIE, clear_auth_cookie
 from .jwt import decode_access_token
 from .principal import Principal
@@ -34,10 +35,6 @@ WHERE s.token_hash = $1
   AND u.active
   AND NOT u.blocked
 """
-
-
-def client_ip(request: Request) -> str | None:
-    return request.client.host if request.client else None
 
 
 class AuthMiddleware(BaseHTTPMiddleware):

@@ -47,6 +47,7 @@ class Config:
     cookie_domain: str | None = os.getenv("COOKIE_DOMAIN") or None
 
     cors_origins: list[str] = _list("CORS_ORIGINS", "http://localhost:3000")
+    trusted_proxies: set[str] = set(_list("TRUSTED_PROXIES", "127.0.0.1,::1"))
 
     login_max_attempts: int = _int("LOGIN_MAX_ATTEMPTS", 5)
     login_lock_minutes: int = _int("LOGIN_LOCK_MINUTES", 15)
