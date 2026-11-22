@@ -2,6 +2,7 @@ from jwt import PyJWTError
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
+from ..config.config import config
 from ..db.audit_context import set_audit_context
 from ..db.connection import fetchrow
 from ..http.error import error
@@ -11,15 +12,9 @@ from .jwt import decode_access_token
 from .principal import Principal
 from .tokens import hash_token
 
-PUBLIC_PATHS = {
-    "/api",
-    "/api/auth/login",
-    "/api/auth/logout",
-    "/docs",
-    "/docs/oauth2-redirect",
-    "/redoc",
-    "/openapi.json",
-}
+PUBLIC_PATHS = {"/api", "/api/auth/login", "/api/auth/logout"}
+if not config.is_production:
+    PUBLIC_PATHS |= {"/docs", "/docs/oauth2-redirect", "/redoc", "/openapi.json"}
 
 PASSWORD_CHANGE_PATHS = {"/api/auth/me", "/api/auth/password"}
 

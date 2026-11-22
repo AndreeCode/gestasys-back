@@ -5,6 +5,7 @@ import sys
 import asyncpg
 
 from scripts.common import admin_connection
+from src.core.config.config import config
 from src.modules.health_facility.seeders.health_facility_seeder import seed_health_facilities
 from src.modules.permission.seeders.permission_seeder import seed_permissions
 from src.modules.pregnancy.seeders.pregnancy_seeder import seed_demo_pregnancies
@@ -31,6 +32,9 @@ async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-demo", action="store_true", help="solo permisos, roles, usuarios y establecimientos")
     args = parser.parse_args()
+    if config.is_production and not args.no_demo:
+        print("APP_ENV=production: la data demo esta deshabilitada, usa --no-demo")
+        return 1
     try:
         conn = await admin_connection()
     except Exception as e:

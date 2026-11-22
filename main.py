@@ -17,7 +17,10 @@ from src.core.http.success import success
 from src.core.logger.logger import logger
 from src.core.routes.routes import router as api_router
 from src.core.security.auth_middleware import AuthMiddleware
+from src.core.security.security_headers import SecurityHeadersMiddleware
 from src.modules.backup.services.backup_service import backupService
+
+config.ensure_valid()
 
 
 @asynccontextmanager
@@ -34,7 +37,14 @@ async def lifespan(app: FastAPI):
     await close_pool()
 
 
-app = FastAPI(title="GestaSys API", lifespan=lifespan)
+docs = not config.is_production
+app = FastAPI(
+    title="GestaSys API",
+    lifespan=lifespan,
+    docs_url="/docs" if docs else None,
+    redoc_url="/redoc" if docs else None,
+    openapi_url="/openapi.json" if docs else None,
+)
 
 register_exception_handlers(app)
 app.add_middleware(AuthMiddleware)
@@ -47,6 +57,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Total-Count"],
     max_age=600,
 )
+app.add_middleware(SecurityHeadersMiddleware)
 app.include_router(api_router, prefix="/api")
 
 

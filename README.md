@@ -26,6 +26,13 @@ python -m scripts.reset --drop    # DROP SCHEMA public CASCADE → luego migrate
 python -m scripts.fresh --seed    # reset --drop + migrate + seed
 ```
 
+**Configuración segura (A02)**: el back **no arranca** si falta `JWT_SECRET` (mínimo 32 caracteres) o `DB_PASSWORD`. Con `APP_ENV=production`:
+- `/docs`, `/redoc` y `/openapi.json` se desactivan.
+- Las cookies salen siempre con `Secure` y se envía HSTS.
+- `scripts.seed` genera contraseñas aleatorias, las muestra una sola vez y obliga a cambiarlas; la data demo queda deshabilitada (usar `--no-demo`).
+
+Todas las respuestas llevan cabeceras de seguridad (`core/security/security_headers.py`). En producción, correr uvicorn sin `--reload` y con `--no-server-header`.
+
 Los scripts y `pg_dump` se conectan con `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD`, que corresponden al dueño del esquema. Si no están definidos, usan `DB_USER`.
 
 La app puede correr con un rol restringido llamado `gestasys_app`. Si ese rol existe, `init.sql` le da `SELECT/INSERT/UPDATE/DELETE` en las tablas y solo `SELECT` en `audit_log`.
