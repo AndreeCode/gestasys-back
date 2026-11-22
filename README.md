@@ -151,3 +151,11 @@ Los `PUT` son una fusión parcial (`model_dump(exclude_unset=True)`): solo cambi
   - **Si se pierde la clave, los backups cifrados no se pueden recuperar**: guárdala fuera del servidor.
   - Requiere tener `pg_dump` instalado.
 # gestasys-back
+
+## Docker
+
+```bash
+docker build -t gestasys-back .
+```
+
+La imagen corre uvicorn en `:5000` como usuario sin privilegios; las variables van por entorno (o `*_FILE` para secretos). Para levantar back + front juntos, usar `compose.yaml` en la raíz del proyecto (`../compose.yaml`).
