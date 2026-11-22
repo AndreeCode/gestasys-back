@@ -1,0 +1,26 @@
+# Secretos
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Backups generados por pg_dump (BACKUP_DIR)
+backups/
+*.dump
+
+# Logs
+*.log
+
+# Editores / SO
+.idea/
+.vscode/
+*.swp
+.DS_Store
