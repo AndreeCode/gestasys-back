@@ -7,6 +7,8 @@ import asyncpg
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import BadRequestError, NotFoundError
 from ....core.http.validation import Validator, clean
+from ....core.http.app_error import ForbiddenError
+from ....core.security.facility_scope import Scope, in_scope
 from ..domain.health_facility_domain import HealthFacility
 from ..repositories.health_facility_repositories import healthFacilityRepository
 
@@ -60,7 +62,17 @@ class HealthFacilityService:
         if not facility.active:
             raise BadRequestError("El establecimiento de salud indicado esta inactivo")
 
-    async def create(self, data: dict[str, Any]) -> HealthFacility:
+    def _check_network(self, network_id: Optional[UUID], scope: Optional[Scope]) -> Optional[UUID]:
+        if scope is None:
+            return network_id
+        if scope.health_facility_id is not None or scope.micro_network_id is None:
+            raise ForbiddenError("Solo el admin de una microred o el superadmin pueden crear o mover establecimientos")
+        if network_id is not None and network_id != scope.micro_network_id:
+            raise ForbiddenError("Solo puedes gestionar establecimientos de tu microred")
+        return scope.micro_network_id
+
+    async def create(self, data: dict[str, Any], scope: Optional[Scope] = None) -> HealthFacility:
+        data = {**data, "micro_network_id": self._check_network(data.get("micro_network_id"), scope)}
         facility = HealthFacility(id=None, **{k: data.get(k) for k in FIELDS}, active=data.get("active") is not False)
         normalize(facility)
         validate(facility)
@@ -68,8 +80,12 @@ class HealthFacilityService:
             facility_id = await healthFacilityRepository.create(conn, facility)
         return await self.get_by_id(facility_id)
 
-    async def update(self, facility_id: UUID, data: dict[str, Any]) -> HealthFacility:
+    async def update(self, facility_id: UUID, data: dict[str, Any], scope: Optional[Scope] = None) -> HealthFacility:
         facility = await self.get_by_id(facility_id)
+        if not in_scope(facility.id, scope):
+            raise NotFoundError("Establecimiento de salud no encontrado")
+        if scope is not None and "micro_network_id" in data:
+            data = {**data, "micro_network_id": self._check_network(data.get("micro_network_id"), scope)}
         for key in FIELDS:
             if key in data and (data[key] is not None or key not in ("code", "name")):
                 setattr(facility, key, data[key])

@@ -44,6 +44,7 @@ Los límites se guardan en memoria, uno por proceso. Si se corren varios workers
 
 - Cada ruta declara su permiso con `require_permission("<modulo>.<verbo>")`. El catálogo está en `permission_catalog.py` y los roles base son `superadmin`, `admin` y `registrador` (ver `role_seeder.py`).
 - Alcance Red → Microred → EE.SS. (`users.micro_network_id` o `users.health_facility_id`, excluyentes): un admin de microred ve todos los EE.SS. de su microred; un usuario con EE.SS. solo ese. Aplica a gestantes, controles, dashboard, export, importaciones, usuarios, establecimientos, microredes y auditoría (`GET /audit-logs` filtra por `scope_health_facility_id` / `scope_micro_network_id`). Fuera de su alcance recibe 404, y si filtra por otro EE.SS. recibe 403. Solo el superadmin verifica la cadena completa (`/audit-logs/verify`).
+- Un admin solo crea o edita EE.SS. de su microred y ve estadísticas de su ámbito (`report.get`); el registrador no gestiona usuarios ni establecimientos.
 - Reglas de escalada: nadie asigna roles ni permisos que no tenga él mismo, y nadie se cambia a sí mismo el rol, el ámbito ni el estado; un admin solo asigna usuarios a su microred o a sus EE.SS. El rol `superadmin` es fijo. Ver `user_service.py` y el README.
 
 ### Tipos de archivo permitidos (V5.1.1)

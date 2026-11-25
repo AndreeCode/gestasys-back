@@ -63,13 +63,13 @@ class HealthFacilityHandler:
         facility = await healthFacilityService.get_by_id(parse_uuid(facility_id, "health_facility_id"))
         return success(200, "Establecimiento obtenido correctamente", facility.to_dict())
 
-    async def create(self, body: HealthFacilityCreateRequest):
-        facility = await healthFacilityService.create(body.model_dump())
+    async def create(self, body: HealthFacilityCreateRequest, scope: Optional[Scope] = None):
+        facility = await healthFacilityService.create(body.model_dump(), scope)
         return success(201, "Establecimiento creado correctamente", facility.to_dict())
 
-    async def update(self, facility_id: str, body: HealthFacilityUpdateRequest):
+    async def update(self, facility_id: str, body: HealthFacilityUpdateRequest, scope: Optional[Scope] = None):
         facility = await healthFacilityService.update(
-            parse_uuid(facility_id, "health_facility_id"), body.model_dump(exclude_unset=True)
+            parse_uuid(facility_id, "health_facility_id"), body.model_dump(exclude_unset=True), scope
         )
         return success(200, "Establecimiento actualizado correctamente", facility.to_dict())
 

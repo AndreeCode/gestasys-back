@@ -11,6 +11,7 @@ from ...modules.micro_network.micro_network_route import router as micro_network
 from ...modules.permission.permission_route import router as permission_router
 from ...modules.pregnancy.pregnancy_route import router as pregnancy_router
 from ...modules.prenatal_control.prenatal_control_route import router as prenatal_control_router
+from ...modules.report.report_route import router as report_router
 from ...modules.role.role_route import router as role_router
 from ...modules.session.session_route import router as session_router
 from ...modules.user.user_route import router as user_router
@@ -18,6 +19,7 @@ from ...modules.user.user_route import router as user_router
 router = APIRouter()
 router.include_router(auth_router)
 router.include_router(dashboard_router)
+router.include_router(report_router)
 router.include_router(user_router)
 router.include_router(role_router)
 router.include_router(permission_router)

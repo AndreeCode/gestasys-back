@@ -1,5 +1,6 @@
 PERMISSIONS: dict[str, str] = {
     "dashboard.get": "Ver el resumen general",
+    "report.get": "Ver estadisticas y cumplimiento de su ambito",
     "user.get": "Listar y ver usuarios",
     "user.post": "Registrar usuarios",
     "user.put": "Editar, bloquear y resetear usuarios",
@@ -54,6 +55,9 @@ SYSTEM_ROLES: list[dict] = [
             "permission.get",
             "micro_network.get",
             "health_facility.get",
+            "health_facility.post",
+            "health_facility.put",
+            "report.get",
             "pregnancy.get",
             "pregnancy.post",
             "pregnancy.put",

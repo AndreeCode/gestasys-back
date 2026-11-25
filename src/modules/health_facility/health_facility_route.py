@@ -29,13 +29,15 @@ async def get_health_facility_by_id(health_facility_id: str):
 
 
 @router.post("", dependencies=[Depends(require_permission("health_facility.post"))])
-async def create_health_facility(body: HealthFacilityCreateRequest):
-    return await healthFacilityHandler.create(body)
+async def create_health_facility(body: HealthFacilityCreateRequest, scope: Optional[Scope] = Depends(facility_scope)):
+    return await healthFacilityHandler.create(body, scope)
 
 
 @router.put("/{health_facility_id}", dependencies=[Depends(require_permission("health_facility.put"))])
-async def update_health_facility(health_facility_id: str, body: HealthFacilityUpdateRequest):
-    return await healthFacilityHandler.update(health_facility_id, body)
+async def update_health_facility(
+    health_facility_id: str, body: HealthFacilityUpdateRequest, scope: Optional[Scope] = Depends(facility_scope)
+):
+    return await healthFacilityHandler.update(health_facility_id, body, scope)
 
 
 @router.delete("/{health_facility_id}", dependencies=[Depends(require_permission("health_facility.delete"))])

@@ -44,10 +44,24 @@ BASE_XF = [
 HEX = re.compile(r"^[0-9A-F]{6}$")
 
 
-def _styles(colors: list[str]) -> tuple[str, dict[str, int]]:
+def _dark(color: str) -> bool:
+    r, g, b = (int(color[i:i + 2], 16) for i in (0, 2, 4))
+    return 0.299 * r + 0.587 * g + 0.114 * b < 140
+
+
+def _styles(colors: list[str], header_colors: list[str]) -> tuple[str, dict[str, int], dict[str, int]]:
     fills = list(BASE_FILLS)
     xfs = list(BASE_XF)
     index: dict[str, int] = {}
+    headers: dict[str, int] = {}
+    for color in header_colors:
+        fills.append(f'<fill><patternFill patternType="solid"><fgColor rgb="FF{color}"/></patternFill></fill>')
+        font = 2 if _dark(color) else 1
+        xfs.append(
+            f'<xf numFmtId="0" fontId="{font}" fillId="{len(fills) - 1}" borderId="1" xfId="0" applyFont="1" applyFill="1" '
+            'applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+        )
+        headers[color] = len(xfs) - 1
     for color in colors:
         fills.append(f'<fill><patternFill patternType="solid"><fgColor rgb="FF{color}"/></patternFill></fill>')
         xfs.append(
@@ -65,7 +79,7 @@ def _styles(colors: list[str]) -> tuple[str, dict[str, int]]:
         + f'<cellXfs count="{len(xfs)}">{"".join(xfs)}</cellXfs>'
         + "</styleSheet>"
     )
-    return xml, index
+    return xml, index, headers
 
 
 def _text(value: str) -> str:
@@ -98,7 +112,13 @@ def _sheet(
     fills: list[list[Optional[str]]],
     styles: dict[str, int],
     freeze_columns: int,
+    header_fills: list[tuple[Optional[str], Optional[str], Optional[str]]],
+    headers: dict[str, int],
 ) -> str:
+    def head(col: int, level: int, default: int) -> int:
+        color = header_fills[col][level] if col < len(header_fills) else None
+        return headers.get(color, default) if color else default
+
     n = len(labels)
     last = column_letter(n)
     xml: list[str] = [f'<row r="1" ht="22" customHeight="1">{_cell("A1", title, TITLE)}</row>']
@@ -106,8 +126,8 @@ def _sheet(
 
     cells = []
     for start, end, text in _spans(sections):
-        cells.append(_cell(f"{column_letter(start + 1)}3", text, SECTION))
-        cells.extend(_cell(f"{column_letter(col)}3", "", SECTION) for col in range(start + 2, end + 2))
+        cells.append(_cell(f"{column_letter(start + 1)}3", text, head(start, 0, SECTION)))
+        cells.extend(_cell(f"{column_letter(col)}3", "", head(col - 1, 0, SECTION)) for col in range(start + 2, end + 2))
         if end > start:
             merges.append(f"{column_letter(start + 1)}3:{column_letter(end + 1)}3")
     xml.append(f'<row r="3" ht="30" customHeight="1">{"".join(cells)}</row>')
@@ -115,12 +135,15 @@ def _sheet(
     cells = []
     for start, end, text in _spans([f"{sections[i]}\u0000{groups[i]}" for i in range(n)]):
         group = text.split("\u0000", 1)[1]
-        cells.append(_cell(f"{column_letter(start + 1)}4", group, GROUP))
-        cells.extend(_cell(f"{column_letter(col)}4", "", GROUP) for col in range(start + 2, end + 2))
+        cells.append(_cell(f"{column_letter(start + 1)}4", group, head(start, 1, GROUP)))
+        cells.extend(_cell(f"{column_letter(col)}4", "", head(col - 1, 1, GROUP)) for col in range(start + 2, end + 2))
         if end > start and group:
             merges.append(f"{column_letter(start + 1)}4:{column_letter(end + 1)}4")
     xml.append(f'<row r="4" ht="30" customHeight="1">{"".join(cells)}</row>')
-    xml.append(f'<row r="5" ht="54" customHeight="1">{"".join(_cell(f"{column_letter(i + 1)}5", labels[i], LABEL) for i in range(n))}</row>')
+    xml.append(
+        f'<row r="5" ht="54" customHeight="1">'
+        f'{"".join(_cell(f"{column_letter(i + 1)}5", labels[i], head(i, 2, LABEL)) for i in range(n))}</row>'
+    )
 
     for r, row in enumerate(rows):
         row_fill = fills[r] if r < len(fills) else []
@@ -167,9 +190,12 @@ def write_minsa_xlsx(
     widths: list[int],
     sheets: list[SheetSpec],
     freeze_columns: int = 10,
+    header_fills: Optional[list[tuple[Optional[str], Optional[str], Optional[str]]]] = None,
 ) -> bytes:
+    header_fills = header_fills or []
     colors = sorted({c for spec in sheets for row in spec.fills for c in row if c and HEX.match(c)})
-    styles_xml, styles = _styles(colors)
+    header_colors = sorted({c for t in header_fills for c in t if c and HEX.match(c)})
+    styles_xml, styles, headers = _styles(colors, header_colors)
     last = column_letter(len(labels))
     content_types = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -229,6 +255,9 @@ def write_minsa_xlsx(
         for i, spec in enumerate(sheets, start=1):
             z.writestr(
                 f"xl/worksheets/sheet{i}.xml",
-                _sheet(spec.title, sections, groups, labels, widths, spec.rows, spec.fills, styles, freeze_columns),
+                _sheet(
+                    spec.title, sections, groups, labels, widths, spec.rows, spec.fills, styles, freeze_columns,
+                    header_fills, headers,
+                ),
             )
     return buffer.getvalue()

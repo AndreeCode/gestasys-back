@@ -113,6 +113,204 @@ SECTION_COLUMNS: list[tuple[str, str, str]] = [
     ("OBSERVACIONES POR LOS EE. SS. (CONSIGNAR FECHA Y MOTIVO DE LA OBSERVACIÓN)", "", ""),
 ]
 
+HEADER_FILLS: list[tuple[Optional[str], Optional[str], Optional[str]]] = [
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('E7E6E6', 'E7E6E6', 'E7E6E6'),
+    ('FFFF00', 'FFFF00', 'FFFF00'),
+    ('FFFF00', 'FFFF00', 'FFFF00'),
+    ('FFFF00', 'FFFF00', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', None),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', 'FF0000'),
+    ('00B0F0', '00B0F0', 'FFFF00'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', None),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'FFFF00', 'FFFF00'),
+    ('F58F8F', 'FFFF00', 'FFFF00'),
+    ('F58F8F', 'FFFF00', 'FFFF00'),
+    ('F58F8F', 'FFFF00', 'FFFF00'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', 'F58F8F'),
+    ('F58F8F', 'F58F8F', None),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('C00000', 'C00000', 'C00000'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('00B0F0', '00B0F0', '00B0F0'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('C9C9C9', 'C9C9C9', 'C9C9C9'),
+    ('C9C9C9', 'C9C9C9', 'C9C9C9'),
+    ('02C4CE', '02C4CE', '02C4CE'),
+    ('02C4CE', '02C4CE', '02C4CE'),
+    ('02C4CE', '02C4CE', '02C4CE'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('9DC3E6', 'FFFF00', 'FFFF00'),
+    ('9DC3E6', 'FFFF00', 'FFFF00'),
+    ('9DC3E6', 'C5E0B4', 'C5E0B4'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('A9D18E', 'A9D18E', 'A9D18E'),
+    ('A9D18E', 'A9D18E', 'A9D18E'),
+    ('A9D18E', 'A9D18E', 'A9D18E'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('FFFFC5', 'FFFFC5', 'FFFFC5'),
+    ('FFFFC5', 'FFFFC5', 'FF0000'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', 'C5E0B4'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', 'C5E0B4'),
+    ('92D050', '92D050', 'FFFF00'),
+    ('92D050', '92D050', 'FFFF00'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', 'FF0000'),
+    ('92D050', '92D050', '92D050'),
+    ('92D050', '92D050', 'FF0000'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('9DC3E6', '9DC3E6', '9DC3E6'),
+    ('FFC000', 'FFC000', 'FFC000'),
+    ('E7A2FC', 'E7A2FC', 'E7A2FC'),
+    ('E7A2FC', 'E7A2FC', 'E7A2FC'),
+    ('E7A2FC', 'E7A2FC', 'E7A2FC'),
+    ('0070C0', '0070C0', '0070C0'),
+    ('0070C0', '0070C0', '0070C0'),
+    ('0070C0', '0070C0', '0070C0'),
+    ('FFFF66', 'FFFF66', 'FFFF66'),
+]
+
+NOT_EDITABLE = {"n", "f:renaes", "f:micro_network", "f:facility", "f:age", "other"}
+MARKS_FILL = ("6B7280", "9CA3AF", "D1D5DB")
+
+
 @dataclass(frozen=True)
 class Column:
     key: str
@@ -120,6 +318,15 @@ class Column:
     group: str
     label: str
     width: int = 14
+    fills: tuple[Optional[str], Optional[str], Optional[str]] = (None, None, None)
+
+    @property
+    def editable(self) -> bool:
+        return self.key not in NOT_EDITABLE and not self.key.startswith("m:")
+
+
+def header_fill(position: int) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    return HEADER_FILLS[position] if 0 <= position < len(HEADER_FILLS) else (None, None, None)
 
 
 def slug(text: str) -> str:
@@ -178,23 +385,26 @@ def section_list() -> list[dict]:
 
 def build_columns(selected: Optional[set[str]] = None) -> list[Column]:
     want = lambda sid: selected is None or sid in selected
-    columns: list[Column] = [Column("n", IDENTITY_SECTION, "", "Nº", 5)]
-    for key, label, width, _ in FIXED:
+    columns: list[Column] = [Column("n", IDENTITY_SECTION, "", "Nº", 5, header_fill(0))]
+    for i, (key, label, width, _) in enumerate(FIXED, start=1):
         section = PREGNANCY_SECTION if key in ("formula", "lmp", "edd") else IDENTITY_SECTION
-        columns.append(Column(f"f:{key}", section, "", label, width))
+        columns.append(Column(f"f:{key}", section, "", label, width, header_fill(i)))
+    apn_start = 1 + len(FIXED)
     if want("apn"):
         for n in range(1, APN_COUNT + 1):
-            for part, label, width in APN_PARTS:
-                columns.append(Column(f"apn:{n}:{part}", APN_SECTION, f"{ORDINALS[n - 1]} APN", label, width))
+            for j, (part, label, width) in enumerate(APN_PARTS):
+                position = apn_start + (n - 1) * len(APN_PARTS) + j
+                columns.append(Column(f"apn:{n}:{part}", APN_SECTION, f"{ORDINALS[n - 1]} APN", label, width, header_fill(position)))
+    clinical_start = apn_start + APN_COUNT * len(APN_PARTS)
     for index, (section, group, label) in enumerate(SECTION_COLUMNS):
         if want(slug(section)):
-            columns.append(Column(f"c:{index}", section, group, label, 14))
+            columns.append(Column(f"c:{index}", section, group, label, 14, header_fill(clinical_start + index)))
     if want("otros"):
         columns.append(Column("other", "OTROS DATOS", "", "Datos sin columna en el formato", 30))
     if want("marcas"):
-        columns.append(Column("m:row", MARKS_SECTION, "Fila pintada en el Excel", "Fila marcada (1 = pintada, 0 = sin color)", 12))
-        columns.append(Column("m:color", MARKS_SECTION, "Fila pintada en el Excel", "Color de la fila", 12))
-        columns.append(Column("m:cells", MARKS_SECTION, "Celdas pintadas distinto a su fila", "Cantidad de celdas marcadas", 12))
+        columns.append(Column("m:row", MARKS_SECTION, "Fila pintada en el Excel", "Fila marcada (1 = pintada, 0 = sin color)", 12, MARKS_FILL))
+        columns.append(Column("m:color", MARKS_SECTION, "Fila pintada en el Excel", "Color de la fila", 12, MARKS_FILL))
+        columns.append(Column("m:cells", MARKS_SECTION, "Celdas pintadas distinto a su fila", "Cantidad de celdas marcadas", 12, MARKS_FILL))
     return columns
 
 

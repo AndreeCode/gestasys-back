@@ -273,7 +273,13 @@ class DataImportService:
         colors = sorted({c for row in fills for c in row if c})
         return {
             "sections": section_list(),
-            "columns": [{"key": c.key, "section": c.section, "group": c.group, "label": c.label} for c in columns],
+            "columns": [
+                {
+                    "key": c.key, "section": c.section, "group": c.group, "label": c.label,
+                    "fills": list(c.fills), "editable": c.editable,
+                }
+                for c in columns
+            ],
             "rows": rows,
             "fills": fills,
             "legend": [{"color": c, "name": color_name(c)} for c in colors],
@@ -281,6 +287,15 @@ class DataImportService:
             "codes": [p.code for p in items],
             "total": total,
         }
+
+    async def minsa_row(self, pregnancy_id: UUID, scope: Optional[Scope]) -> dict:
+        columns = build_columns(None)
+        async with connection() as conn:
+            p = await pregnancyRepository.get_by_id(conn, pregnancy_id)
+            if p is None or not in_scope(p.health_facility_id, scope):
+                raise NotFoundError("Registro de gestante no encontrado")
+            rows, fills = await self._minsa_rows(conn, [p], 0, columns)
+        return {"id": str(p.id), "code": p.code, "keys": [c.key for c in columns], "row": rows[0], "fills": fills[0]}
 
     async def export_minsa(self, f: PregnancyFilter, sections: Optional[set[str]]) -> tuple[bytes, int]:
         columns = build_columns(sections)
@@ -315,6 +330,7 @@ class DataImportService:
                     mark_fills,
                 ),
             ],
+            header_fills=[c.fills for c in columns],
         )
         return content, len(items)
 

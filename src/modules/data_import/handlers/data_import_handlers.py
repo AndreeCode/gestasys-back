@@ -13,6 +13,7 @@ from ....core.http.uuid_param import parse_uuid
 from ....core.security.facility_scope import Scope
 from ...pregnancy.domain.pregnancy_domain import PregnancyFilter
 from ..services.data_import_service import dataImportService, sanitize_file_name
+from ..services.minsa_edit_service import minsaEditService
 
 
 class DataImportHandler:
@@ -62,6 +63,14 @@ class DataImportHandler:
         return list_response(
             200, "Vista en formato MINSA obtenida correctamente", data, {"total": total, "limit": limit, "offset": offset}
         )
+
+    async def update_minsa(
+        self, pregnancy_id: str, cells: dict[str, str], scope: Optional[Scope], user_id: UUID, can_controls: bool
+    ):
+        pid = parse_uuid(pregnancy_id, "pregnancy_id")
+        await minsaEditService.update_cells(pid, cells, scope, user_id, can_controls)
+        row = await dataImportService.minsa_row(pid, scope)
+        return success(200, f"Registro {row['code']} actualizado ({len(cells)} celdas)", row)
 
     def template(self):
         return Response(

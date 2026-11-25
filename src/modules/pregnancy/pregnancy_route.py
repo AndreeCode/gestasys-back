@@ -9,7 +9,9 @@ from ...core.security.permission_guard import require_permission
 from ...core.security.throttle import throttle
 from ...core.security.principal import current_principal
 from ..data_import.handlers.data_import_handlers import dataImportHandler
+from ...core.security.permissions import user_has_permission
 from .handlers.pregnancy_handlers import (
+    MinsaCellsRequest,
     PregnancyCreateRequest,
     PregnancySearchRequest,
     PregnancyUpdateRequest,
@@ -101,6 +103,15 @@ async def get_pregnancy_by_id(pregnancy_id: str, scope: Optional[Scope] = Depend
 @router.get("/{pregnancy_id}/history", dependencies=[Depends(require_permission("pregnancy.get"))])
 async def get_pregnancy_history(pregnancy_id: str, scope: Optional[Scope] = Depends(facility_scope)):
     return await pregnancyHandler.history(pregnancy_id, scope)
+
+
+@router.put("/{pregnancy_id}/minsa", dependencies=[Depends(require_permission("pregnancy.put"))])
+async def update_pregnancy_minsa(
+    request: Request, pregnancy_id: str, body: MinsaCellsRequest, scope: Optional[Scope] = Depends(facility_scope)
+):
+    principal = current_principal(request)
+    can_controls = await user_has_permission(principal.user_id, "prenatal_control.put")
+    return await dataImportHandler.update_minsa(pregnancy_id, body.cells, scope, principal.user_id, can_controls)
 
 
 @router.post("", dependencies=[Depends(require_permission("pregnancy.post"))])
