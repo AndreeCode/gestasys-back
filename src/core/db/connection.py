@@ -59,11 +59,9 @@ async def connect_admin() -> asyncpg.Connection:
 
 async def apply_audit_context(conn: asyncpg.Connection) -> None:
     audit = get_audit_context()
-    await conn.execute(
-        "SELECT set_config($1, $5, true), set_config($2, $6, true), set_config($3, $7, true), set_config($4, $8, true)",
-        *KEYS,
-        *(audit.get(key, "") for key in KEYS),
-    )
+    n = len(KEYS)
+    calls = ", ".join(f"set_config(${i + 1}, ${i + 1 + n}, true)" for i in range(n))
+    await conn.execute(f"SELECT {calls}", *KEYS, *(audit.get(key, "") for key in KEYS))
 
 
 @asynccontextmanager

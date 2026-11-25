@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends
 
+from ...core.security.facility_scope import Scope, facility_scope
 from ...core.security.permission_guard import require_permission
 from .handlers.health_facility_handlers import (
     HealthFacilityCreateRequest,
@@ -13,8 +14,13 @@ router = APIRouter(prefix="/health-facilities", tags=["health-facilities"])
 
 
 @router.get("", dependencies=[Depends(require_permission("health_facility.get"))])
-async def get_all_health_facilities(q: Optional[str] = None, active: Optional[bool] = None):
-    return await healthFacilityHandler.get_all(q, active)
+async def get_all_health_facilities(
+    q: Optional[str] = None,
+    active: Optional[bool] = None,
+    micro_network_id: Optional[str] = None,
+    scope: Optional[Scope] = Depends(facility_scope),
+):
+    return await healthFacilityHandler.get_all(q, active, micro_network_id, scope)
 
 
 @router.get("/{health_facility_id}", dependencies=[Depends(require_permission("health_facility.get"))])

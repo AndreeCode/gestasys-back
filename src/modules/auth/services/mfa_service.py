@@ -94,7 +94,7 @@ class MfaService:
             await userRepository.revoke_sessions(conn, user.id, "mfa_disabled", principal.session_id)
             await userRepository.log_auth_event(conn, "MFA_DISABLED", user.id, "successful", None)
 
-    async def reset(self, caller_id: UUID, user_id: UUID, scope: Optional[UUID]) -> None:
+    async def reset(self, caller_id: UUID, user_id: UUID, scope) -> None:
         if caller_id == user_id:
             raise ForbiddenError("Para tu propia cuenta usa Configuracion > Verificacion en dos pasos")
         target = await userService.get_by_id(user_id, scope)

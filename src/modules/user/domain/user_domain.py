@@ -19,6 +19,8 @@ class User:
     phone: Optional[str] = None
     health_facility_id: Optional[UUID] = None
     health_facility_name: Optional[str] = None
+    micro_network_id: Optional[UUID] = None
+    micro_network_name: Optional[str] = None
     active: bool = True
     blocked: bool = False
     blocked_reason: Optional[str] = None

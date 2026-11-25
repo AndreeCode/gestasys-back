@@ -65,7 +65,7 @@ class Config:
     temp_password_hours: int = _int("TEMP_PASSWORD_HOURS", 72)
     session_idle_minutes: int = _int("SESSION_IDLE_MINUTES", 30)
     mfa_required: bool = _bool("MFA_REQUIRED", os.getenv("APP_ENV", "").strip().lower() == "production")
-    mfa_roles: set[str] = set(_list("MFA_ROLES", "admin,coordinador"))
+    mfa_roles: set[str] = set(_list("MFA_ROLES", "superadmin,admin"))
     mfa_issuer: str = os.getenv("MFA_ISSUER", "GestaSys")
     mfa_encryption_key_env: str = _secret("MFA_ENCRYPTION_KEY")
 
@@ -83,6 +83,7 @@ class Config:
     import_max_bytes: int = _int("IMPORT_MAX_MB", 10) * 1024 * 1024
 
     backup_dir: str = os.getenv("BACKUP_DIR", "backups")
+    backup_enabled: bool = _bool("BACKUP_ENABLED", True)
     backup_auto: bool = _bool("BACKUP_AUTO", True)
     backup_hour: int = _int("BACKUP_HOUR", 2)
     backup_minute: int = _int("BACKUP_MINUTE", 0)
@@ -139,7 +140,7 @@ class Config:
                 self.backup_key()
             except ValueError as err:
                 found.append(str(err))
-        elif self.is_production:
+        elif self.is_production and self.backup_enabled:
             found.append("BACKUP_ENCRYPTION_KEY es obligatorio en produccion (python -m scripts.backup_key --generate)")
         if self.is_production and "*" in self.cors_origins:
             found.append("CORS_ORIGINS no puede ser '*' en produccion")

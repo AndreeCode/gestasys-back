@@ -9,6 +9,9 @@ PERMISSIONS: dict[str, str] = {
     "role.put": "Editar roles y sus permisos",
     "role.delete": "Eliminar roles",
     "permission.get": "Ver el catalogo de permisos",
+    "micro_network.get": "Listar microredes",
+    "micro_network.post": "Crear microredes",
+    "micro_network.put": "Editar microredes",
     "health_facility.get": "Listar establecimientos de salud",
     "health_facility.post": "Crear establecimientos de salud",
     "health_facility.put": "Editar establecimientos de salud",
@@ -17,7 +20,7 @@ PERMISSIONS: dict[str, str] = {
     "pregnancy.post": "Crear registros de gestantes",
     "pregnancy.put": "Editar registros de gestantes",
     "pregnancy.delete": "Eliminar registros de gestantes",
-    "pregnancy.import": "Importar registros desde CSV",
+    "pregnancy.import": "Importar registros desde CSV o Excel (formato MINSA)",
     "pregnancy.export": "Exportar registros a CSV",
     "prenatal_control.get": "Consultar controles prenatales",
     "prenatal_control.post": "Registrar controles prenatales",
@@ -34,20 +37,27 @@ PERMISSIONS: dict[str, str] = {
     "audit_log.get": "Ver la bitacora de auditoria",
 }
 
-ADMIN_ROLE = "admin"
+ADMIN_ROLE = "superadmin"
 
 SYSTEM_ROLES: list[dict] = [
-    {"name": ADMIN_ROLE, "description": "Acceso total", "codes": list(PERMISSIONS)},
+    {"name": ADMIN_ROLE, "description": "Toda la red de salud: microredes, establecimientos y usuarios", "codes": list(PERMISSIONS)},
     {
-        "name": "coordinador",
-        "description": "Gestion operativa",
+        "name": "admin",
+        "description": "Administra su microred o sede: usuarios, registros y auditoria",
         "codes": [
             "dashboard.get",
+            "user.get",
             "user.post",
+            "user.put",
+            "user.delete",
+            "role.get",
+            "permission.get",
+            "micro_network.get",
             "health_facility.get",
             "pregnancy.get",
             "pregnancy.post",
             "pregnancy.put",
+            "pregnancy.delete",
             "pregnancy.import",
             "pregnancy.export",
             "prenatal_control.get",
@@ -55,17 +65,23 @@ SYSTEM_ROLES: list[dict] = [
             "prenatal_control.put",
             "prenatal_control.delete",
             "data_import.get",
+            "audit_log.get",
         ],
     },
     {
-        "name": "consulta",
-        "description": "Solo lectura",
+        "name": "registrador",
+        "description": "Registra gestantes y controles de su establecimiento",
         "codes": [
             "dashboard.get",
             "health_facility.get",
             "pregnancy.get",
-            "pregnancy.export",
+            "pregnancy.post",
+            "pregnancy.put",
+            "pregnancy.import",
             "prenatal_control.get",
+            "prenatal_control.post",
+            "prenatal_control.put",
+            "data_import.get",
         ],
     },
 ]

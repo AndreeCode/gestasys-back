@@ -8,7 +8,7 @@ import asyncpg
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import AppError, NotFoundError, ValidationError
 from ....core.http.exception_handlers import describe_db_error
-from ....core.security.facility_scope import in_scope
+from ....core.security.facility_scope import Scope, ids, in_scope
 from ....core.logger.logger import logger
 from ...health_facility.repositories.health_facility_repositories import healthFacilityRepository
 from ...pregnancy.domain.pregnancy_domain import STATUS_COMPLETED, Pregnancy, PregnancyFilter
@@ -29,7 +29,14 @@ from ..domain.csv_format import (
     write_csv,
 )
 from ..domain.data_import_domain import DataImport
+from ..domain.minsa_format import read_minsa
+from ..domain.colors import color_name
+from ..domain.minsa_template import build_columns, row_fills, row_values, section_list
+from ..domain.xlsx_writer import SheetSpec, write_minsa_xlsx
+from ...prenatal_control.repositories.prenatal_control_repositories import prenatalControlRepository
+from ..domain.xlsx_reader import read_xlsx
 from ..repositories.data_import_repositories import dataImportRepository
+from .minsa_import_service import FacilityResolver, process_minsa_record
 
 MAX_ROWS = 20000
 
@@ -106,7 +113,7 @@ def error_message(err: Exception) -> str:
 
 
 async def process_row(
-    conn, sheet: Sheet, row: list[str], importer: UUID, facilities: FacilityCache, scope: Optional[UUID] = None
+    conn, sheet: Sheet, row: list[str], importer: UUID, facilities: FacilityCache, scope: Optional[Scope] = None
 ) -> tuple[str, str]:
     code = sheet.get(row, "codigo").upper()
     dni = sheet.get(row, "dni")
@@ -143,9 +150,12 @@ def sanitize_file_name(name: str | None) -> str:
 
 
 class DataImportService:
-    async def get_all(self, limit: int, offset: int, only_by: Optional[UUID] = None) -> tuple[list[DataImport], int]:
+    async def get_all(
+        self, limit: int, offset: int, only_by: Optional[UUID] = None, scope: Optional[Scope] = None
+    ) -> tuple[list[DataImport], int]:
+        network = scope.micro_network_id if scope is not None else None
         async with connection() as conn:
-            return await dataImportRepository.get_all(conn, limit, offset, only_by)
+            return await dataImportRepository.get_all(conn, limit, offset, only_by, ids(scope), network)
 
     async def get_by_id(self, import_id: UUID, only_by: Optional[UUID] = None) -> DataImport:
         async with connection() as conn:
@@ -155,7 +165,7 @@ class DataImportService:
         return item
 
     async def import_csv(
-        self, importer: UUID, file_name: str, data: bytes, dry_run: bool, scope: Optional[UUID] = None
+        self, importer: UUID, file_name: str, data: bytes, dry_run: bool, scope: Optional[Scope] = None
     ) -> DataImport:
         sheet = read_sheet(data, MAX_ROWS)
         result = DataImport(id=None, file_name=file_name, total_rows=len(sheet.rows), dry_run=dry_run, imported_by=importer)
@@ -188,6 +198,125 @@ class DataImportService:
         except DryRunRollback:
             pass
         return result
+
+    async def import_minsa(
+        self, importer: UUID, file_name: str, data: bytes, dry_run: bool, scope: Optional[Scope] = None
+    ) -> DataImport:
+        records = read_minsa(read_xlsx(data, MAX_ROWS), MAX_ROWS)
+        result = DataImport(
+            id=None, file_name=file_name, total_rows=len(records), dry_run=dry_run, imported_by=importer,
+            format="minsa_xlsx",
+        )
+        touched: list[UUID] = []
+        try:
+            async with transaction() as conn:
+                facilities = FacilityResolver(conn, scope)
+                for record in records:
+                    location = {"sheet": record.sheet, "line": record.row}
+                    savepoint = conn.transaction()
+                    await savepoint.start()
+                    try:
+                        action, p, controls, warnings = await process_minsa_record(
+                            conn, record, importer, facilities, scope
+                        )
+                    except Exception as err:
+                        await savepoint.rollback()
+                        result.failed += 1
+                        result.errors.append({**location, "level": "error", "message": error_message(err)})
+                        continue
+                    await savepoint.commit()
+                    touched.append(p.id)
+                    result.controls += controls
+                    if action == "inserted":
+                        result.inserted += 1
+                    else:
+                        result.updated += 1
+                    for warning in warnings:
+                        result.warnings += 1
+                        result.errors.append({**location, "code": p.code, "level": "warning", "message": warning})
+                result.created_facilities = facilities.created
+                if dry_run:
+                    raise DryRunRollback()
+                saved = await dataImportRepository.create(conn, result)
+                result.id, result.created_at = saved["id"], saved["created_at"]
+                await dataImportRepository.set_import(conn, result.id, touched)
+        except DryRunRollback:
+            pass
+        return result
+
+    async def _minsa_rows(self, conn, items, offset: int, columns) -> tuple[list[list[str]], list[list]]:
+        ids = [p.id for p in items]
+        controls = await prenatalControlRepository.for_pregnancies(conn, ids)
+        facilities = {
+            row["id"]: dict(row)
+            for row in await conn.fetch(
+                "SELECT id, renaes, province, district FROM health_facilities WHERE id = ANY($1::uuid[])",
+                list({p.health_facility_id for p in items}),
+            )
+        }
+        rows, fills = [], []
+        for i, p in enumerate(items, start=offset + 1):
+            data = p.to_dict()
+            facility = facilities.get(p.health_facility_id, {})
+            data["renaes"] = facility.get("renaes")
+            data["facility_province"] = facility.get("province")
+            data["facility_district"] = facility.get("district")
+            rows.append(row_values(i, data, controls.get(p.id, []), columns))
+            fills.append(row_fills(data, columns))
+        return rows, fills
+
+    async def minsa_view(self, f: PregnancyFilter, sections: Optional[set[str]], limit: int, offset: int) -> dict:
+        columns = build_columns(sections)
+        async with connection() as conn:
+            items, total = await pregnancyRepository.get_all(conn, f, limit, offset)
+            rows, fills = await self._minsa_rows(conn, items, offset, columns)
+        colors = sorted({c for row in fills for c in row if c})
+        return {
+            "sections": section_list(),
+            "columns": [{"key": c.key, "section": c.section, "group": c.group, "label": c.label} for c in columns],
+            "rows": rows,
+            "fills": fills,
+            "legend": [{"color": c, "name": color_name(c)} for c in colors],
+            "ids": [str(p.id) for p in items],
+            "codes": [p.code for p in items],
+            "total": total,
+        }
+
+    async def export_minsa(self, f: PregnancyFilter, sections: Optional[set[str]]) -> tuple[bytes, int]:
+        columns = build_columns(sections)
+        async with connection() as conn:
+            items = await pregnancyRepository.get_all_unpaged(conn, f)
+            if len(items) > MAX_ROWS:
+                raise ValidationError(f"Son {len(items)} registros: filtra para exportar como maximo {MAX_ROWS}")
+            rows, fills = await self._minsa_rows(conn, items, 0, columns)
+        today = date.today().strftime("%d/%m/%Y")
+        keep = {"n", "f:full_name", "f:dni"}
+        marks = [
+            [row[i] if c.key in keep else ("1" if fill[i] else "0") for i, c in enumerate(columns)]
+            for row, fill in zip(rows, fills)
+        ]
+        mark_fills = [[None if c.key in keep else fill[i] for i, c in enumerate(columns)] for fill in fills]
+        content = write_minsa_xlsx(
+            [c.section for c in columns],
+            [c.group for c in columns],
+            [c.label for c in columns],
+            [c.width for c in columns],
+            [
+                SheetSpec(
+                    "Gestantes",
+                    f"SEGUIMIENTO DE GESTANTES - FORMATO MINSA ({len(items)} registros, generado {today})",
+                    rows,
+                    fills,
+                ),
+                SheetSpec(
+                    "Marcas 0-1",
+                    f"MARCAS DE COLOR: 1 = celda pintada en el Excel original, 0 = sin color (generado {today})",
+                    marks,
+                    mark_fills,
+                ),
+            ],
+        )
+        return content, len(items)
 
     async def export_csv(self, f: PregnancyFilter, delimiter: str) -> tuple[bytes, int]:
         async with connection() as conn:

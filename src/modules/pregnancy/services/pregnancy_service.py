@@ -7,7 +7,7 @@ import asyncpg
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import ConflictError, ForbiddenError, NotFoundError
 from ....core.http.validation import Validator, age_on, clean
-from ....core.security.facility_scope import in_scope
+from ....core.security.facility_scope import Scope, in_scope
 from ...health_facility.services.health_facility_service import healthFacilityService
 from ..domain.pregnancy_domain import (
     GESTATION_DAYS,
@@ -24,7 +24,7 @@ from ..repositories.pregnancy_repositories import pregnancyRepository
 FIELDS = (
     "dni", "first_names", "last_names", "birth_date", "phone", "address", "health_facility_id",
     "last_menstrual_period", "expected_delivery_date", "gravida", "parity", "risk_level", "status",
-    "delivery_date", "notes",
+    "delivery_date", "notes", "clinical_record", "insurance", "province", "district", "locality",
 )
 
 
@@ -35,6 +35,11 @@ def normalize(p: Pregnancy) -> None:
     p.phone = clean(p.phone)
     p.address = clean(p.address)
     p.notes = clean(p.notes)
+    p.clinical_record = clean(p.clinical_record)
+    p.insurance = clean(p.insurance)
+    p.province = clean(p.province)
+    p.district = clean(p.district)
+    p.locality = clean(p.locality)
     p.risk_level = (p.risk_level or RISK_LOW).strip().lower()
     p.status = (p.status or STATUS_PENDING).strip().lower()
 
@@ -47,7 +52,7 @@ def validate(p: Pregnancy) -> None:
     v.required("last_names", p.last_names)
     v.max_len("last_names", p.last_names, 120)
     v.check(p.birth_date is not None, "birth_date es obligatorio")
-    v.check(p.health_facility_id is not None, "health_facility_id es obligatorio")
+    v.check(p.health_facility_id is not None, "health_facility_id es obligatorio: elige el establecimiento")
     v.one_of("risk_level", p.risk_level, RISK_LEVELS)
     v.one_of("status", p.status, STATUSES)
     v.max_len("phone", p.phone, 30)
@@ -83,7 +88,7 @@ def validate(p: Pregnancy) -> None:
     v.raise_if_errors()
 
 
-async def ensure_no_open_duplicate(conn: asyncpg.Connection, p: Pregnancy, scope: Optional[UUID] = None) -> None:
+async def ensure_no_open_duplicate(conn: asyncpg.Connection, p: Pregnancy, scope: Optional[Scope] = None) -> None:
     if not p.dni or not p.active or p.status == STATUS_COMPLETED:
         return
     other = await pregnancyRepository.get_open_by_dni(conn, p.dni)
@@ -93,13 +98,13 @@ async def ensure_no_open_duplicate(conn: asyncpg.Connection, p: Pregnancy, scope
         raise ConflictError(f"Ya existe un registro abierto para el DNI {p.dni} ({other.code})")
 
 
-def ensure_scope(p: Pregnancy, scope: Optional[UUID]) -> None:
+def ensure_scope(p: Pregnancy, scope: Optional[Scope]) -> None:
     if scope is None:
         return
-    if p.health_facility_id is None:
-        p.health_facility_id = scope
-    elif p.health_facility_id != scope:
-        raise ForbiddenError("Solo puedes registrar gestantes en tu establecimiento")
+    if p.health_facility_id is None and len(scope.facility_ids) == 1:
+        p.health_facility_id = scope.facility_ids[0]
+    elif p.health_facility_id is not None and p.health_facility_id not in scope.facility_ids:
+        raise ForbiddenError("Solo puedes registrar gestantes en los establecimientos a tu cargo")
 
 
 class PregnancyService:
@@ -107,18 +112,18 @@ class PregnancyService:
         async with connection() as conn:
             return await pregnancyRepository.get_all(conn, f, limit, offset)
 
-    async def get_by_id(self, pregnancy_id: UUID, scope: Optional[UUID] = None) -> Pregnancy:
+    async def get_by_id(self, pregnancy_id: UUID, scope: Optional[Scope] = None) -> Pregnancy:
         async with connection() as conn:
             p = await pregnancyRepository.get_by_id(conn, pregnancy_id)
         if p is None or not in_scope(p.health_facility_id, scope):
             raise NotFoundError("Registro de gestante no encontrado")
         return p
 
-    async def stats(self, facility_id: Optional[UUID] = None) -> dict:
+    async def stats(self, facility_ids: Optional[list[UUID]] = None) -> dict:
         async with connection() as conn:
-            return await pregnancyRepository.stats(conn, facility_id)
+            return await pregnancyRepository.stats(conn, facility_ids)
 
-    async def create_in(self, conn: asyncpg.Connection, p: Pregnancy, scope: Optional[UUID] = None) -> UUID:
+    async def create_in(self, conn: asyncpg.Connection, p: Pregnancy, scope: Optional[Scope] = None) -> UUID:
         ensure_scope(p, scope)
         normalize(p)
         validate(p)
@@ -127,7 +132,7 @@ class PregnancyService:
         return await pregnancyRepository.create(conn, p)
 
     async def update_in(
-        self, conn: asyncpg.Connection, p: Pregnancy, facility_changed: bool, scope: Optional[UUID] = None
+        self, conn: asyncpg.Connection, p: Pregnancy, facility_changed: bool, scope: Optional[Scope] = None
     ) -> None:
         ensure_scope(p, scope)
         normalize(p)
@@ -137,13 +142,13 @@ class PregnancyService:
         await ensure_no_open_duplicate(conn, p, scope)
         await pregnancyRepository.update(conn, p)
 
-    async def create(self, registered_by: UUID, data: dict[str, Any], scope: Optional[UUID] = None) -> Pregnancy:
+    async def create(self, registered_by: UUID, data: dict[str, Any], scope: Optional[Scope] = None) -> Pregnancy:
         p = Pregnancy(id=None, **{k: data.get(k) for k in FIELDS}, registered_by=registered_by)
         async with transaction() as conn:
             pregnancy_id = await self.create_in(conn, p, scope)
         return await self.get_by_id(pregnancy_id)
 
-    async def update(self, pregnancy_id: UUID, data: dict[str, Any], scope: Optional[UUID] = None) -> Pregnancy:
+    async def update(self, pregnancy_id: UUID, data: dict[str, Any], scope: Optional[Scope] = None) -> Pregnancy:
         p = await self.get_by_id(pregnancy_id, scope)
         required = ("first_names", "last_names", "birth_date", "health_facility_id", "risk_level", "status")
         facility_changed = data.get("health_facility_id") is not None and data["health_facility_id"] != p.health_facility_id
@@ -160,7 +165,7 @@ class PregnancyService:
             await self.update_in(conn, p, facility_changed, scope)
         return await self.get_by_id(pregnancy_id)
 
-    async def delete(self, pregnancy_id: UUID, scope: Optional[UUID] = None) -> None:
+    async def delete(self, pregnancy_id: UUID, scope: Optional[Scope] = None) -> None:
         p = await self.get_by_id(pregnancy_id, scope)
         if not p.active:
             raise ConflictError("El registro ya estaba eliminado")

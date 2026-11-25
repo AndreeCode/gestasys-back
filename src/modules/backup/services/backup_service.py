@@ -83,9 +83,10 @@ class BackupService:
             failure = await backupRepository.latest(conn, "failed")
             summary = await backupRepository.summary(conn)
         return {
-            "auto_enabled": config.backup_auto,
+            "enabled": config.backup_enabled,
+            "auto_enabled": config.backup_enabled and config.backup_auto,
             "schedule": f"{config.backup_hour:02d}:{config.backup_minute:02d}",
-            "next_run_at": next_run() if config.backup_auto else None,
+            "next_run_at": next_run() if config.backup_enabled and config.backup_auto else None,
             "keep": config.backup_keep,
             "pg_dump_available": pg_dump_available(),
             "running": summary["running"],
@@ -95,6 +96,8 @@ class BackupService:
         }
 
     async def start(self, kind: str, priority: str, created_by: Optional[UUID]) -> Backup:
+        if not config.backup_enabled:
+            raise AppError(503, "Los backups estan desactivados en el servidor (BACKUP_ENABLED=false)")
         if not pg_dump_available():
             raise AppError(503, "pg_dump no esta disponible en el servidor (configura PG_DUMP_PATH)")
         if self._lock.locked():
@@ -257,6 +260,9 @@ class BackupService:
                 logger.error(f"No se pudo iniciar el backup automatico: {msg}")
 
     def start_scheduler(self) -> None:
+        if not config.backup_enabled:
+            logger.info("Backups desactivados (BACKUP_ENABLED=false)")
+            return
         if not config.backup_auto:
             logger.info("Backups automaticos desactivados (BACKUP_AUTO=false)")
             return

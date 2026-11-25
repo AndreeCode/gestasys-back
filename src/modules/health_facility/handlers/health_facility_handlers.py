@@ -1,4 +1,5 @@
 from typing import Optional
+from uuid import UUID
 
 from pydantic import Field
 
@@ -7,12 +8,16 @@ from ....core.http.list import list_response
 from ....core.http.request_models import StrictModel
 from ....core.http.success import success
 from ....core.http.uuid_param import parse_uuid
+from ....core.http.uuid_param import parse_optional_uuid
+from ....core.security.facility_scope import Scope, ids
 from ..services.health_facility_service import healthFacilityService
 
 register_constraints(
     {
         "health_facilities_code_key": "Ya existe un establecimiento con ese codigo",
         "uq_health_facilities_name": "Ya existe un establecimiento con ese nombre",
+        "uq_health_facilities_renaes": "Ya existe un establecimiento con ese codigo RENAES",
+        "health_facilities_micro_network_id_fkey": "La microred indicada no existe",
     }
 )
 
@@ -24,6 +29,9 @@ class HealthFacilityCreateRequest(StrictModel):
     district: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = None
     phone: Optional[str] = Field(default=None, max_length=30)
+    micro_network_id: Optional[UUID] = None
+    renaes: Optional[str] = Field(default=None, max_length=20)
+    province: Optional[str] = Field(default=None, max_length=100)
     active: Optional[bool] = None
 
 
@@ -34,12 +42,19 @@ class HealthFacilityUpdateRequest(StrictModel):
     district: Optional[str] = Field(default=None, max_length=100)
     address: Optional[str] = None
     phone: Optional[str] = Field(default=None, max_length=30)
+    micro_network_id: Optional[UUID] = None
+    renaes: Optional[str] = Field(default=None, max_length=20)
+    province: Optional[str] = Field(default=None, max_length=100)
     active: Optional[bool] = None
 
 
 class HealthFacilityHandler:
-    async def get_all(self, q: Optional[str], active: Optional[bool]):
-        items = await healthFacilityService.get_all(q or None, active)
+    async def get_all(
+        self, q: Optional[str], active: Optional[bool], micro_network_id: Optional[str], scope: Optional[Scope]
+    ):
+        items = await healthFacilityService.get_all(
+            q or None, active, ids(scope), parse_optional_uuid(micro_network_id, "micro_network_id")
+        )
         return list_response(
             200, "Establecimientos obtenidos correctamente", [f.to_dict() for f in items], {"total": len(items)}
         )

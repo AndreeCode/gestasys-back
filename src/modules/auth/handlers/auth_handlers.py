@@ -79,6 +79,7 @@ async def build_profile(user_id, session: dict) -> dict:
     return {
         **user.to_dict(),
         "permissions": await user_permissions(user_id),
+        "scope_level": "health_facility" if user.health_facility_id else "micro_network" if user.micro_network_id else "network",
         "session": session,
         "mfa_required": required_for(user.role),
         "mfa_setup_required": setup_required(user),

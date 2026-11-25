@@ -42,15 +42,16 @@ Los límites se guardan en memoria, uno por proceso. Si se corren varios workers
 
 ### Reglas de autorización (V8.1.1 y V8.1.2)
 
-- Cada ruta declara su permiso con `require_permission("<modulo>.<verbo>")`. El catálogo está en `permission_catalog.py` y los roles base son `admin`, `coordinador` y `consulta` (ver `role_seeder.py`).
-- Alcance por establecimiento (`users.health_facility_id`): un usuario con establecimiento asignado solo ve gestantes, controles, dashboard, export, importaciones y usuarios de ese establecimiento. Fuera de su alcance recibe 404, y si filtra por otro establecimiento recibe 403.
-- Reglas de escalada: nadie asigna roles ni permisos que no tenga él mismo, y nadie se cambia a sí mismo el rol, el establecimiento ni el estado. El rol `admin` es fijo. Ver `user_service.py` y el README.
+- Cada ruta declara su permiso con `require_permission("<modulo>.<verbo>")`. El catálogo está en `permission_catalog.py` y los roles base son `superadmin`, `admin` y `registrador` (ver `role_seeder.py`).
+- Alcance Red → Microred → EE.SS. (`users.micro_network_id` o `users.health_facility_id`, excluyentes): un admin de microred ve todos los EE.SS. de su microred; un usuario con EE.SS. solo ese. Aplica a gestantes, controles, dashboard, export, importaciones, usuarios, establecimientos, microredes y auditoría (`GET /audit-logs` filtra por `scope_health_facility_id` / `scope_micro_network_id`). Fuera de su alcance recibe 404, y si filtra por otro EE.SS. recibe 403. Solo el superadmin verifica la cadena completa (`/audit-logs/verify`).
+- Reglas de escalada: nadie asigna roles ni permisos que no tenga él mismo, y nadie se cambia a sí mismo el rol, el ámbito ni el estado; un admin solo asigna usuarios a su microred o a sus EE.SS. El rol `superadmin` es fijo. Ver `user_service.py` y el README.
 
 ### Tipos de archivo permitidos (V5.1.1)
 
 | Flujo | Tipo | Tamaño | Validación |
 |---|---|---|---|
 | Import (`POST /pregnancies/import`) | `.csv` / `.txt` de texto (UTF-8, cp1252) | 10 MB | Extensión, nombre saneado, rechazo de bytes NUL y de firmas binarias (ZIP/XLSX, PDF, EXE, imágenes), cabeceras obligatorias |
+| Import Excel MINSA (`POST /pregnancies/import`) | `.xlsx` (Office Open XML) | 10 MB (80 MB descomprimido) | Extensión, ZIP válido con `xl/workbook.xml`, máx. 2000 miembros y 30 hojas, rechazo de libros cifrados y de XML con DTD/entidades, cabeceras MINSA obligatorias; se lee en memoria y no se guarda |
 | Export y plantilla | `text/csv; charset=utf-8` como `attachment` | — | `write_csv()` neutraliza fórmulas |
 | Backups | `.dump.enc` (`application/octet-stream`, `attachment`) | — | SHA-256 verificado antes de enviar |
 
@@ -61,7 +62,7 @@ El sistema no sirve archivos subidos por usuarios: el CSV se procesa en memoria 
 | Nivel | Datos | Protección |
 |---|---|---|
 | **Secreto** | Hash de contraseña, secreto TOTP, códigos de respaldo, tokens de sesión y de dispositivo, claves (`JWT_SECRET`, `AUDIT_CHAIN_KEY`, `MFA_ENCRYPTION_KEY`, `BACKUP_ENCRYPTION_KEY`) | Argon2, AES-GCM o SHA-256. Nunca se devuelven ni se registran en el log. Las claves se leen del `.env` o de `*_FILE` |
-| **Sensible (salud)** | Gestantes: DNI, nombre, FUM/FPP, riesgo, controles prenatales | Alcance por establecimiento, permisos, auditoría, `Cache-Control: no-store`, `Clear-Site-Data` al salir, búsqueda por `POST` (no viaja en la URL), backups cifrados |
+| **Sensible (salud)** | Gestantes: DNI, nombre, historia clínica, seguro, FUM/FPP, riesgo, controles prenatales y la ficha MINSA (`clinical_data`: laboratorio, VIH/sífilis, tamizaje VIF, datos del padre...) | Alcance por microred/EE.SS., permisos, auditoría (con EE.SS., IP y dispositivo), `Cache-Control: no-store`, `Clear-Site-Data` al salir, búsqueda por `POST` (no viaja en la URL), backups cifrados |
 | **Interno** | Usuarios, establecimientos, sesiones, auditoría | Permisos y auditoría |
 | **Público** | `GET /api` (estado) | — |
 

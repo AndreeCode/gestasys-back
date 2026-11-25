@@ -27,4 +27,12 @@ async def seed_roles(conn: asyncpg.Connection) -> dict[str, UUID]:
             role_id,
             seed["codes"],
         )
+        await conn.execute(
+            """
+            DELETE FROM role_permission rp USING permissions p
+            WHERE rp.permission_id = p.id AND rp.role_id = $1::uuid AND NOT (p.code = ANY($2::text[]))
+            """,
+            role_id,
+            seed["codes"],
+        )
     return ids

@@ -1,13 +1,11 @@
-from typing import Optional
-from uuid import UUID
-
 from ....core.http.success import success
+from ....core.security.principal import Principal
 from ..services.dashboard_service import dashboardService
 
 
 class DashboardHandler:
-    async def get(self, scope: Optional[UUID] = None):
-        return success(200, "Resumen obtenido correctamente", await dashboardService.get(scope))
+    async def get(self, principal: Principal):
+        return success(200, "Resumen obtenido correctamente", await dashboardService.get(principal))
 
 
 dashboardHandler = DashboardHandler()

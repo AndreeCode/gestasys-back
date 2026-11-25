@@ -22,7 +22,12 @@ class PrenatalControl:
     hemoglobin: Optional[float] = None
     next_appointment: Optional[date] = None
     notes: Optional[str] = None
+    control_number: Optional[int] = None
+    supplementation: Optional[str] = None
+    risk_factor: Optional[str] = None
+    performed_at: Optional[str] = None
     registered_by: Optional[UUID] = None
+    registered_by_name: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

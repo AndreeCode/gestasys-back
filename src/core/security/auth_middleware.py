@@ -12,6 +12,7 @@ from ..http.error import error
 from .client_ip import client_ip
 from .cookies import ACCESS_TOKEN_COOKIE, clear_auth_cookie
 from .jwt import decode_access_token
+from .facility_scope import Scope
 from .principal import Principal
 from .tokens import hash_token
 
@@ -25,7 +26,11 @@ TOUCH_EVERY = timedelta(seconds=60)
 
 SESSION_QUERY = """
 SELECT s.id, s.user_id, s.device_id, s.last_activity_at, u.username, u.role_id, u.must_change_password,
-       u.health_facility_id, u.mfa_enabled, r.name AS role_name
+       u.health_facility_id, u.micro_network_id, u.mfa_enabled, r.name AS role_name,
+       CASE WHEN u.health_facility_id IS NOT NULL THEN ARRAY[u.health_facility_id]
+            WHEN u.micro_network_id IS NOT NULL THEN
+                 ARRAY(SELECT hf.id FROM health_facilities hf WHERE hf.micro_network_id = u.micro_network_id)
+       END AS facility_ids
 FROM sessions s
 JOIN devices d ON d.id = s.device_id
 JOIN users u ON u.id = s.user_id
@@ -37,6 +42,16 @@ WHERE s.token_hash = $1
   AND u.active
   AND NOT u.blocked
 """
+
+
+def build_scope(row) -> Scope | None:
+    if row["facility_ids"] is None:
+        return None
+    return Scope(
+        facility_ids=tuple(row["facility_ids"]),
+        micro_network_id=row["micro_network_id"],
+        health_facility_id=row["health_facility_id"],
+    )
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -92,6 +107,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
             role_id=row["role_id"],
             must_change_password=row["must_change_password"],
             health_facility_id=row["health_facility_id"],
+            micro_network_id=row["micro_network_id"],
+            scope=build_scope(row),
         )
 
         if principal.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
@@ -105,6 +122,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
         ):
             return error(403, "Tu rol exige la verificacion en dos pasos: activala para continuar")
 
-        set_audit_context(user_id=str(principal.user_id), device_id=str(principal.device_id))
+        set_audit_context(
+            user_id=str(principal.user_id),
+            device_id=str(principal.device_id),
+            health_facility_id=principal.health_facility_id,
+            micro_network_id=principal.micro_network_id,
+        )
         request.state.principal = principal
         return await call_next(request)

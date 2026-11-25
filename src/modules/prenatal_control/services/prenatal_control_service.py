@@ -7,7 +7,7 @@ import asyncpg
 from ....core.db.connection import connection, transaction
 from ....core.http.app_error import BadRequestError, ConflictError, NotFoundError
 from ....core.http.validation import Validator, clean
-from ....core.security.facility_scope import in_scope
+from ....core.security.facility_scope import Scope, ids, in_scope
 from ...pregnancy.domain.pregnancy_domain import STATUS_COMPLETED, STATUS_IN_FOLLOWUP, STATUS_PENDING, Pregnancy
 from ...pregnancy.repositories.pregnancy_repositories import pregnancyRepository
 from ..domain.prenatal_control_domain import PrenatalControl
@@ -36,7 +36,7 @@ def validate(c: PrenatalControl, p: Pregnancy) -> None:
     v.raise_if_errors()
 
 
-async def load_pregnancy(conn: asyncpg.Connection, pregnancy_id: UUID, scope: Optional[UUID] = None) -> Pregnancy:
+async def load_pregnancy(conn: asyncpg.Connection, pregnancy_id: UUID, scope: Optional[Scope] = None) -> Pregnancy:
     p = await pregnancyRepository.get_by_id(conn, pregnancy_id)
     if p is None or not p.active or not in_scope(p.health_facility_id, scope):
         raise BadRequestError("El registro de gestante indicado no existe")
@@ -46,16 +46,16 @@ async def load_pregnancy(conn: asyncpg.Connection, pregnancy_id: UUID, scope: Op
 class PrenatalControlService:
     async def get_all(self, pregnancy_id=None, date_from=None, date_to=None, scope=None) -> list[PrenatalControl]:
         async with connection() as conn:
-            return await prenatalControlRepository.get_all(conn, pregnancy_id, date_from, date_to, scope)
+            return await prenatalControlRepository.get_all(conn, pregnancy_id, date_from, date_to, ids(scope))
 
-    async def get_by_id(self, control_id: UUID, scope: Optional[UUID] = None) -> PrenatalControl:
+    async def get_by_id(self, control_id: UUID, scope: Optional[Scope] = None) -> PrenatalControl:
         async with connection() as conn:
-            c = await prenatalControlRepository.get_by_id(conn, control_id, scope)
+            c = await prenatalControlRepository.get_by_id(conn, control_id, ids(scope))
         if c is None:
             raise NotFoundError("Control prenatal no encontrado")
         return c
 
-    async def create(self, registered_by: UUID, data: dict[str, Any], scope: Optional[UUID] = None) -> PrenatalControl:
+    async def create(self, registered_by: UUID, data: dict[str, Any], scope: Optional[Scope] = None) -> PrenatalControl:
         c = PrenatalControl(
             id=None,
             pregnancy_id=data["pregnancy_id"],
@@ -63,6 +63,9 @@ class PrenatalControlService:
             registered_by=registered_by,
         )
         c.notes = clean(c.notes)
+        c.supplementation = clean(c.supplementation)
+        c.risk_factor = clean(c.risk_factor)
+        c.performed_at = clean(c.performed_at)
         async with transaction() as conn:
             p = await load_pregnancy(conn, c.pregnancy_id, scope)
             if p.status == STATUS_COMPLETED:
@@ -73,7 +76,7 @@ class PrenatalControlService:
                 await pregnancyRepository.set_status(conn, p.id, STATUS_IN_FOLLOWUP)
         return await self.get_by_id(control_id)
 
-    async def update(self, control_id: UUID, data: dict[str, Any], scope: Optional[UUID] = None) -> PrenatalControl:
+    async def update(self, control_id: UUID, data: dict[str, Any], scope: Optional[Scope] = None) -> PrenatalControl:
         c = await self.get_by_id(control_id, scope)
         date_changed = data.get("control_date") is not None and data["control_date"] != c.control_date
         for key in VALUES:
@@ -87,7 +90,7 @@ class PrenatalControlService:
             await prenatalControlRepository.update(conn, c)
         return await self.get_by_id(control_id)
 
-    async def delete(self, control_id: UUID, scope: Optional[UUID] = None) -> None:
+    async def delete(self, control_id: UUID, scope: Optional[Scope] = None) -> None:
         await self.get_by_id(control_id, scope)
         async with transaction() as conn:
             await prenatalControlRepository.delete(conn, control_id)

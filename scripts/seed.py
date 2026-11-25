@@ -6,7 +6,7 @@ import asyncpg
 
 from scripts.common import admin_connection
 from src.core.config.config import config
-from src.modules.health_facility.seeders.health_facility_seeder import seed_health_facilities
+from src.modules.health_facility.seeders.health_facility_seeder import seed_health_facilities, seed_micro_networks
 from src.modules.permission.seeders.permission_seeder import seed_permissions
 from src.modules.pregnancy.seeders.pregnancy_seeder import seed_demo_pregnancies
 from src.modules.role.seeders.role_seeder import seed_roles
@@ -17,11 +17,15 @@ async def run(conn: asyncpg.Connection, demo: bool) -> None:
     async with conn.transaction():
         permissions = await seed_permissions(conn)
         roles = await seed_roles(conn)
-        users = await seed_users(conn, roles)
-        facilities = await seed_health_facilities(conn)
-        print(f"  ✓ base: {len(permissions)} permisos, {len(roles)} roles, {len(users)} usuarios, {len(facilities)} establecimientos")
+        networks = await seed_micro_networks(conn)
+        facilities = await seed_health_facilities(conn, networks)
+        users = await seed_users(conn, roles, networks, facilities)
+        print(
+            f"  ✓ base: {len(permissions)} permisos, {len(roles)} roles, {len(networks)} microredes, "
+            f"{len(facilities)} establecimientos, {len(users)} usuarios"
+        )
         if demo:
-            created = await seed_demo_pregnancies(conn, users["coordinador"], facilities)
+            created = await seed_demo_pregnancies(conn, users["registrador.belen"], facilities)
             if created:
                 print(f"  ✓ demo: {created} registros de gestantes con sus controles")
             else:

@@ -11,7 +11,7 @@ from ..domain.health_facility_domain import HealthFacility
 from ..repositories.health_facility_repositories import healthFacilityRepository
 
 CODE_RE = re.compile(r"^[A-Z0-9_-]{2,20}$")
-FIELDS = ("code", "name", "category", "district", "address", "phone")
+FIELDS = ("code", "name", "category", "district", "address", "phone", "micro_network_id", "renaes", "province")
 
 
 def normalize(f: HealthFacility) -> None:
@@ -21,6 +21,8 @@ def normalize(f: HealthFacility) -> None:
     f.district = clean(f.district)
     f.address = clean(f.address)
     f.phone = clean(f.phone)
+    f.renaes = clean(f.renaes)
+    f.province = clean(f.province)
 
 
 def validate(f: HealthFacility) -> None:
@@ -29,13 +31,20 @@ def validate(f: HealthFacility) -> None:
     v.required("name", f.name)
     v.max_len("name", f.name, 150)
     v.max_len("phone", f.phone, 30)
+    v.check(f.renaes is None or bool(re.fullmatch(r"[0-9]{1,20}", f.renaes)), "renaes debe ser el codigo numerico RENAES")
     v.raise_if_errors()
 
 
 class HealthFacilityService:
-    async def get_all(self, q: Optional[str] = None, active: Optional[bool] = None) -> list[HealthFacility]:
+    async def get_all(
+        self,
+        q: Optional[str] = None,
+        active: Optional[bool] = None,
+        facility_ids: Optional[list[UUID]] = None,
+        micro_network_id: Optional[UUID] = None,
+    ) -> list[HealthFacility]:
         async with connection() as conn:
-            return await healthFacilityRepository.get_all(conn, q, active)
+            return await healthFacilityRepository.get_all(conn, q, active, facility_ids, micro_network_id)
 
     async def get_by_id(self, facility_id: UUID) -> HealthFacility:
         async with connection() as conn:

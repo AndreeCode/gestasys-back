@@ -1,7 +1,9 @@
 from ....core.db import audit_chain
 from ....core.http.list import list_response
 from ....core.http.success import success
+from ....core.http.app_error import ForbiddenError
 from ....core.http.uuid_param import parse_uuid
+from ....core.security.facility_scope import Scope
 from ..domain.audit_log_domain import AuditLogFilter
 from ..services.audit_log_service import auditLogService
 
@@ -16,11 +18,13 @@ class AuditLogHandler:
             {"total": total, "limit": limit, "offset": offset},
         )
 
-    async def get_by_id(self, log_id: str):
-        log = await auditLogService.get_by_id(parse_uuid(log_id, "audit_log_id"))
+    async def get_by_id(self, log_id: str, scope: Scope | None = None):
+        log = await auditLogService.get_by_id(parse_uuid(log_id, "audit_log_id"), scope)
         return success(200, "Registro de auditoria obtenido correctamente", log.to_dict())
 
-    async def verify(self):
+    async def verify(self, scope: Scope | None = None):
+        if scope is not None:
+            raise ForbiddenError("Solo el superadmin puede verificar la cadena completa de auditoria")
         result = await audit_chain.check_and_report()
         if result["ok"]:
             msg = f"Auditoria integra: {result['checked']} registros verificados"

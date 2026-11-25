@@ -15,8 +15,13 @@ class HealthFacility:
     district: Optional[str] = None
     address: Optional[str] = None
     phone: Optional[str] = None
+    micro_network_id: Optional[UUID] = None
+    micro_network_name: Optional[str] = None
+    renaes: Optional[str] = None
+    province: Optional[str] = None
     active: bool = True
     pregnancy_count: int = 0
+    user_count: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -31,6 +31,21 @@ class Pregnancy:
     phone: Optional[str] = None
     address: Optional[str] = None
     health_facility_name: Optional[str] = None
+    micro_network_id: Optional[UUID] = None
+    micro_network_name: Optional[str] = None
+    clinical_record: Optional[str] = None
+    insurance: Optional[str] = None
+    province: Optional[str] = None
+    district: Optional[str] = None
+    locality: Optional[str] = None
+    obstetric_formula: Optional[str] = None
+    birth_date_estimated: bool = False
+    clinical_data: Optional[list] = None
+    row_color: Optional[str] = None
+    cell_marks: Optional[dict] = None
+    source: str = "manual"
+    import_id: Optional[UUID] = None
+    registered_by_name: Optional[str] = None
     last_menstrual_period: Optional[date] = None
     expected_delivery_date: Optional[date] = None
     ga_days: Optional[int] = None
@@ -56,6 +71,7 @@ class Pregnancy:
     def to_dict(self) -> dict:
         data = to_dict(self, hidden=("ga_days",))
         data["full_name"] = self.full_name
+        data["row_marked"] = 1 if self.row_color else 0
         data["gestational_age"] = (
             {"weeks": self.ga_days // 7, "days": self.ga_days % 7} if self.ga_days is not None and self.ga_days >= 0 else None
         )
@@ -65,12 +81,16 @@ class Pregnancy:
 @dataclass
 class PregnancyFilter:
     q: Optional[str] = None
-    health_facility_id: Optional[UUID] = None
+    health_facility_ids: Optional[list[UUID]] = None
     status: Optional[str] = None
     risk_level: Optional[str] = None
     active: Optional[bool] = True
     due_from: Optional[date] = None
     due_to: Optional[date] = None
+    mark: Optional[str] = None
 
     def args(self) -> list:
-        return [self.q, self.health_facility_id, self.status, self.risk_level, self.active, self.due_from, self.due_to]
+        return [
+            self.q, self.health_facility_ids, self.status, self.risk_level, self.active, self.due_from, self.due_to,
+            self.mark,
+        ]

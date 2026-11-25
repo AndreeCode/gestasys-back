@@ -4,6 +4,8 @@ from uuid import UUID
 
 from ....core.db import audit_chain
 from ....core.db.connection import connection, ping
+from ....core.security.facility_scope import Scope, ids
+from ....core.security.principal import Principal
 from ...backup.services.backup_service import backupService
 from ...pregnancy.repositories.pregnancy_repositories import pregnancyRepository
 from ..repositories.dashboard_repositories import dashboardRepository
@@ -39,8 +41,8 @@ def describe(table: str, action: str, row: dict, codes: dict[str, str]) -> Optio
 
 
 class DashboardService:
-    async def recent_activity(self, conn, limit: int = 10, scope: Optional[UUID] = None) -> list[dict]:
-        changes = await dashboardRepository.recent_changes(conn, limit * 3, scope)
+    async def recent_activity(self, conn, limit: int = 10, facility_ids: Optional[list[UUID]] = None) -> list[dict]:
+        changes = await dashboardRepository.recent_changes(conn, limit * 3, facility_ids)
         ids = [
             str(c["row"].get("pregnancy_id"))
             for c in changes
@@ -60,6 +62,8 @@ class DashboardService:
                     "record_id": c["record_id"],
                     "description": description,
                     "user_name": c["user_name"],
+                    "health_facility_name": c["health_facility_name"],
+                    "ip_address": c["ip_address"],
                     "created_at": c["created_at"],
                 }
             )
@@ -67,14 +71,28 @@ class DashboardService:
                 break
         return out
 
-    async def get(self, scope: Optional[UUID] = None) -> dict:
+    async def get(self, principal: Principal) -> dict:
+        scope: Optional[Scope] = principal.scope
+        facility_ids = ids(scope)
         async with connection() as conn:
+            names = await dashboardRepository.scope_names(conn, principal.health_facility_id, principal.micro_network_id)
             data = {
-                "stats": await pregnancyRepository.stats(conn, scope),
-                "by_facility": await pregnancyRepository.by_facility(conn, scope),
-                "recent_activity": await self.recent_activity(conn, scope=scope),
-                "upcoming_appointments": await dashboardRepository.upcoming_appointments(conn, 7, 10, scope),
-                "due_soon": await dashboardRepository.due_soon(conn, 30, 10, scope),
+                "scope": {
+                    "level": "network" if scope is None else scope.level,
+                    "health_facility_name": names["health_facility_name"],
+                    "micro_network_name": names["micro_network_name"],
+                    "facilities": None if scope is None else len(scope.facility_ids),
+                    "active_users": names["active_users"],
+                },
+                "stats": await pregnancyRepository.stats(conn, facility_ids),
+                "mine": await pregnancyRepository.stats(conn, facility_ids, principal.user_id),
+                "by_facility": await pregnancyRepository.by_facility(conn, facility_ids),
+                "by_micro_network": await pregnancyRepository.by_micro_network(conn) if scope is None else [],
+                "by_registrar": await pregnancyRepository.by_registrar(conn, facility_ids),
+                "by_month": await pregnancyRepository.by_month(conn, facility_ids),
+                "recent_activity": await self.recent_activity(conn, facility_ids=facility_ids),
+                "upcoming_appointments": await dashboardRepository.upcoming_appointments(conn, 7, 10, facility_ids),
+                "due_soon": await dashboardRepository.due_soon(conn, 30, 10, facility_ids),
             }
         backup = await backupService.status()
         last, failure = backup["last_backup"], backup["last_failure"]
@@ -85,6 +103,7 @@ class DashboardService:
             last_ok = False
         data["system"] = {
             "database": "ok" if await ping() else "error",
+            "backup_enabled": backup["enabled"],
             "backup_auto": backup["auto_enabled"],
             "backup_schedule": backup["schedule"],
             "pg_dump_available": backup["pg_dump_available"],

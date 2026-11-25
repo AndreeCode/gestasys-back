@@ -18,6 +18,14 @@ class DataImport:
     dry_run: bool = False
     imported_by: Optional[UUID] = None
     imported_by_name: Optional[str] = None
+    format: str = "csv"
+    controls: int = 0
+    warnings: int = 0
+    created_facilities: list[str] = field(default_factory=list)
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    health_facility_name: Optional[str] = None
+    micro_network_name: Optional[str] = None
     created_at: Optional[datetime] = None
 
     def to_dict(self) -> dict:

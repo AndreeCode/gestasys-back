@@ -37,11 +37,13 @@ Los scripts y `pg_dump` se conectan con `DB_ADMIN_USER` / `DB_ADMIN_PASSWORD`, q
 
 La app puede correr con un rol restringido llamado `gestasys_app`. Si ese rol existe, `init.sql` le da `SELECT/INSERT/UPDATE/DELETE` en las tablas y solo `SELECT` en `audit_log`.
 
-| usuario | contraseña | rol |
-|---|---|---|
-| `admin` | `Admin123!` | admin |
-| `coordinador` | `Coord123!` | coordinador |
-| `consulta` | `Consulta123!` | consulta |
+| usuario | contraseña | rol | ámbito |
+|---|---|---|---|
+| `superadmin` | `Gestasys-Red-2026` | superadmin | toda la red |
+| `admin.belen` | `Microred-Belen-2026` | admin | Microred Belen |
+| `admin.sanjuan` | `Microred-SanJuan-2026` | admin | Microred San Juan Bautista |
+| `registrador.belen` | `Registro-SanMartin-2026` | registrador | C.S. San Martin (Microred Belen) |
+| `registrador.sanjuan` | `Registro-SanJuan-2026` | registrador | C.S. San Juan Bautista (Microred San Juan Bautista) |
 
 ## Estructura
 
@@ -86,9 +88,14 @@ La matriz completa frente a **OWASP ASVS 5.0 nivel 2** (back + front), con la do
 - **Escalada de privilegios**:
   - Nadie puede asignar roles, otorgar permisos ni editar usuarios con permisos que no tenga él mismo.
   - Nadie puede desactivarse, bloquearse ni cambiarse el rol a sí mismo.
-  - El rol `admin` es fijo.
-- **Alcance por establecimiento** (`users.health_facility_id`, migración `001`): si un usuario tiene establecimiento asignado, solo ve y modifica las gestantes, los controles, el dashboard, el export y la importación de ese establecimiento. Un registro de otro establecimiento responde 404, y filtrar por otro establecimiento responde 403. En la importación ve solo las suyas. Con `NULL` ve todo (admin, coordinador de red).
-  - Un usuario limitado solo crea y administra usuarios de su mismo establecimiento, y no puede quitarles el límite ni moverlos. Nadie puede cambiar su propio establecimiento.
+  - El rol `superadmin` es fijo.
+- **Jerarquía Red → Microred → EE.SS.** (migración `005`): `micro_networks`, `health_facilities.micro_network_id` y `users.micro_network_id` (excluyente con `users.health_facility_id`). Roles del sistema:
+  - `superadmin`: sin microred ni establecimiento, ve toda la red; crea microredes y EE.SS.
+  - `admin`: asignado a una microred (ve todos sus EE.SS.) o a una sede; gestiona usuarios, registros y ve la auditoría de su ámbito.
+  - `registrador`: asignado a un EE.SS.; registra gestantes y controles e importa.
+- **Alcance** (`Scope` en `core/security/facility_scope.py`, lo arma `AuthMiddleware`): lista de EE.SS. permitidos + microred. Gestantes, controles, dashboard, export, importación, usuarios y auditoría lo respetan. Un registro fuera del alcance responde 404 y filtrar por otro EE.SS. responde 403. `None` = toda la red.
+  - Un admin solo crea y administra usuarios de su microred o de sus EE.SS.; solo el superadmin da acceso a toda la red. Nadie puede cambiar su propio ámbito.
+  - El dashboard trae `scope`, `mine` (lo que registró el propio usuario), `by_micro_network` (solo superadmin), `by_facility`, `by_registrar` y `by_month`.
 - **Auditoría**: el trigger `audit_changes()` registra cada cambio en `audit_log`, y además se registran los eventos LOGIN, LOGIN_FAILED (con el motivo, incluido `ip_rate_limit`), LOGOUT y PASSWORD_CHANGED.
   - **Cadena de hashes** (migración `003`): `audit_log` es de solo escritura, porque un trigger impide `UPDATE` y `DELETE`.
   - Cada 60 s la app sella las filas nuevas con `seal_audit_log(AUDIT_CHAIN_KEY)`: HMAC-SHA256 encadenado, donde cada fila incluye el hash de la anterior.
@@ -137,13 +144,23 @@ Los `PUT` son una fusión parcial (`model_dump(exclude_unset=True)`): solo cambi
   - Las semanas se calculan si no se envían.
   - El primer control pasa el registro de `pending` a `in_followup`.
   - Cada control devuelve `alerts`: presión arterial ≥ 140/90, hemoglobina < 11, frecuencia cardiaca fetal fuera de 110–160.
+- **Importación Excel MINSA** (`.xlsx`, `data_import/domain/xlsx_reader.py` + `minsa_format.py`, sin dependencias nuevas): lee el formato de seguimiento de gestantes (fila con `APELLIDOS Y NOMBRES` y `DNI`; columnas por texto de cabecera, no por letra). Límites: 80 MB descomprimido, 30 hojas, rechaza DTD/entidades y libros cifrados.
+  - Gestante: nombres (los 2 primeros apellidos se separan), DNI, historia clínica, seguro, fórmula obstétrica (G/P), FUM/FPP, ubicación. Sin fecha de nacimiento se estima desde la edad (`birth_date_estimated`).
+  - Las 13 APN pasan a `prenatal_controls` (fecha, EG, suplementación, factor de riesgo, EE.SS. que la realizó, cita); se actualizan por fecha al reimportar.
+  - El resto (laboratorio, vacunas, plan de parto, puerperio, padre, referencia, migración, observaciones...) se guarda por secciones en `pregnancies.clinical_data`.
+  - El EE.SS. se busca por nombre y luego por RENAES (si el RENAES de la fila pertenece a otro EE.SS., se ignora con aviso). Si no existe, solo el superadmin lo crea con su microred.
+  - Se deduplica por DNI, luego historia clínica + EE.SS., luego nombre + EE.SS. Riesgo alto con `ARO`, factor de riesgo o edad < 15 / > 35; medio si < 18. Con fecha de terminación queda completado.
+  - `data_imports` guarda formato, IP, User-Agent, EE.SS. y microred de quien importó; cada gestante guarda `import_id`.
+- **Exportar y ver en formato MINSA**: `POST /api/pregnancies/export/minsa` (`pregnancy.export`, .xlsx) y `POST /api/pregnancies/minsa` (`pregnancy.get`, vista paginada) con los mismos filtros que la búsqueda y `sections` opcional (`apn`, `vacunas`, `plan-de-parto`...; sin `sections` = formato completo). La plantilla de columnas está en `minsa_template.py` (192 columnas, de A a GI como el Excel original) y el .xlsx se escribe con `xlsx_writer.py` (librería estándar, celdas de texto, sin fórmulas). Lo exportado se puede volver a importar: datos, APN y ficha vuelven a sus columnas.
+- **Marcas de color del Excel** (migración `006`): el lector toma el relleno de cada celda (incluye colores del tema y su tint). `pregnancies.row_color` guarda el color de la fila (1 = pintada, 0 = sin color) y `cell_marks` las celdas pintadas distinto a su fila; las de la ficha van como `color` en `clinical_data`. La vista MINSA las muestra (o como 0/1), `mark` filtra (`any`, `none` o un hex) y el .xlsx exportado repinta las celdas y agrega la hoja "Marcas 0-1", que el importador ignora.
+- **Auditoría con ámbito**: `audit_changes()` agrega `details.scope` (EE.SS. y microred del registro y desde dónde actuó el usuario), cubierto por el HMAC de la cadena; `scope_health_facility_id` / `scope_micro_network_id` son columnas generadas para filtrar. `GET /api/pregnancies/{id}/history` devuelve la trazabilidad de una gestante.
 - **Importación CSV**:
   - Detecta `,`, `;` o tabulación, y acepta BOM, tildes, sinónimos de cabecera y fechas DD/MM/AAAA.
   - Una fila con `codigo` actualiza ese registro; con un DNI que ya tiene registro abierto, actualiza ese; si no, crea uno nuevo.
   - Cada fila va en su propio savepoint: los errores se reportan por línea sin detener el resto.
   - `dry_run=true` solo valida, sin guardar nada.
 - **Backups**:
-  - Se hacen con `pg_dump --format=custom` en `BACKUP_DIR`.
+  - Se hacen con `pg_dump --format=custom` en `BACKUP_DIR`. Con `BACKUP_ENABLED=false` se apagan todos (no corre el automático, `POST /api/backups` responde 503 y no se exige `BACKUP_ENCRYPTION_KEY`); el historial y las descargas siguen disponibles.
   - El automático diario corre a las `BACKUP_HOUR:BACKUP_MINUTE` y se conservan los últimos `BACKUP_KEEP`.
   - Solo corre uno a la vez.
   - Con `BACKUP_ENCRYPTION_KEY` (obligatoria en producción) se cifran con AES-256-GCM mientras `pg_dump` escribe: nunca hay un volcado en claro en disco. El archivo queda como `.dump.enc`, con permisos `600` dentro de una carpeta `700`.
