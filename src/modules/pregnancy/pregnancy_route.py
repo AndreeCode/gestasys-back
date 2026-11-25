@@ -48,6 +48,15 @@ def body_filter(body: PregnancySearchRequest, scope: Optional[Scope]):
     return build_filter(
         body.q, body.health_facility_id, body.status, body.risk_level, body.active, body.due_from, body.due_to, scope,
         body.mark,
+        {
+            "micro_network_id": body.micro_network_id,
+            "age_group": body.age_group,
+            "insurance": (body.insurance or "").strip() or None,
+            "controls": body.controls,
+            "missed": body.missed,
+            "created_from": body.created_from,
+            "created_to": body.created_to,
+        },
     )
 
 

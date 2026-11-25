@@ -35,9 +35,10 @@ LEFT JOIN LATERAL (
 """
 
 FILTER_WHERE = """
-WHERE ($1::text IS NULL OR p.code ILIKE '%' || $1 || '%' OR p.dni = $1
+WHERE ($1::text IS NULL OR p.code ILIKE '%' || $1 || '%' OR p.dni LIKE $1 || '%'
        OR (p.first_names || ' ' || p.last_names) ILIKE '%' || $1 || '%'
-       OR (p.last_names || ' ' || p.first_names) ILIKE '%' || $1 || '%')
+       OR (p.last_names || ' ' || p.first_names) ILIKE '%' || $1 || '%'
+       OR p.clinical_record ILIKE $1 OR p.phone LIKE '%' || $1 || '%')
   AND ($2::uuid[] IS NULL OR p.health_facility_id = ANY($2))
   AND ($3::text IS NULL OR p.status::text = $3)
   AND ($4::text IS NULL OR p.risk_level::text = $4)
@@ -46,6 +47,21 @@ WHERE ($1::text IS NULL OR p.code ILIKE '%' || $1 || '%' OR p.dni = $1
   AND ($7::date IS NULL OR p.expected_delivery_date <= $7)
   AND ($8::text IS NULL OR ($8 = 'none' AND p.row_color IS NULL) OR ($8 = 'any' AND p.row_color IS NOT NULL)
        OR p.row_color = upper($8))
+  AND ($9::uuid IS NULL OR p.health_facility_id IN (SELECT id FROM health_facilities WHERE micro_network_id = $9))
+  AND ($10::text IS NULL
+       OR ($10 = 'teen' AND p.birth_date > CURRENT_DATE - INTERVAL '18 years')
+       OR ($10 = 'adult' AND p.birth_date <= CURRENT_DATE - INTERVAL '18 years' AND p.birth_date > CURRENT_DATE - INTERVAL '36 years')
+       OR ($10 = 'older' AND p.birth_date <= CURRENT_DATE - INTERVAL '36 years'))
+  AND ($11::text IS NULL OR p.insurance ILIKE $11 || '%')
+  AND ($12::text IS NULL
+       OR ($12 = 'none' AND NOT EXISTS (SELECT 1 FROM prenatal_controls x WHERE x.pregnancy_id = p.id))
+       OR ($12 = 'lt6' AND (SELECT count(*) FROM prenatal_controls x WHERE x.pregnancy_id = p.id) BETWEEN 1 AND 5)
+       OR ($12 = 'gte6' AND (SELECT count(*) FROM prenatal_controls x WHERE x.pregnancy_id = p.id) >= 6))
+  AND ($13::bool IS NULL OR $13 = (
+       p.status <> 'completed' AND (SELECT x.next_appointment FROM prenatal_controls x WHERE x.pregnancy_id = p.id
+                                    ORDER BY x.control_date DESC, x.created_at DESC LIMIT 1) < CURRENT_DATE))
+  AND ($14::date IS NULL OR p.created_at >= $14::date)
+  AND ($15::date IS NULL OR p.created_at < $15::date + 1)
 """
 
 
@@ -57,7 +73,7 @@ class PregnancyRepository:
     async def get_all(self, conn: asyncpg.Connection, f: PregnancyFilter, limit: int, offset: int) -> tuple[list[Pregnancy], int]:
         total = await conn.fetchval("SELECT count(*) FROM pregnancies p" + FILTER_WHERE, *f.args())
         rows = await conn.fetch(
-            SELECT_PREGNANCY + FILTER_WHERE + " ORDER BY p.created_at DESC, p.code DESC LIMIT $9 OFFSET $10",
+            SELECT_PREGNANCY + FILTER_WHERE + " ORDER BY p.created_at DESC, p.code DESC LIMIT $16 OFFSET $17",
             *f.args(),
             limit,
             offset,

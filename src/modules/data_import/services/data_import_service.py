@@ -31,7 +31,8 @@ from ..domain.csv_format import (
 from ..domain.data_import_domain import DataImport
 from ..domain.minsa_format import read_minsa
 from ..domain.colors import color_name
-from ..domain.minsa_template import build_columns, row_fills, row_values, section_list
+from ..domain.minsa_template import Template
+from .minsa_template_service import minsaTemplateService
 from ..domain.xlsx_writer import SheetSpec, write_minsa_xlsx
 from ...prenatal_control.repositories.prenatal_control_repositories import prenatalControlRepository
 from ..domain.xlsx_reader import read_xlsx
@@ -244,7 +245,9 @@ class DataImportService:
             pass
         return result
 
-    async def _minsa_rows(self, conn, items, offset: int, columns) -> tuple[list[list[str]], list[list]]:
+    async def _minsa_rows(
+        self, conn, items, offset: int, columns, template: Template
+    ) -> tuple[list[list[str]], list[list]]:
         ids = [p.id for p in items]
         controls = await prenatalControlRepository.for_pregnancies(conn, ids)
         facilities = {
@@ -261,18 +264,19 @@ class DataImportService:
             data["renaes"] = facility.get("renaes")
             data["facility_province"] = facility.get("province")
             data["facility_district"] = facility.get("district")
-            rows.append(row_values(i, data, controls.get(p.id, []), columns))
-            fills.append(row_fills(data, columns))
+            rows.append(template.row_values(i, data, controls.get(p.id, []), columns))
+            fills.append(template.row_fills(data, columns))
         return rows, fills
 
     async def minsa_view(self, f: PregnancyFilter, sections: Optional[set[str]], limit: int, offset: int) -> dict:
-        columns = build_columns(sections)
         async with connection() as conn:
+            template = await minsaTemplateService.get(conn)
+            columns = template.build_columns(sections)
             items, total = await pregnancyRepository.get_all(conn, f, limit, offset)
-            rows, fills = await self._minsa_rows(conn, items, offset, columns)
+            rows, fills = await self._minsa_rows(conn, items, offset, columns, template)
         colors = sorted({c for row in fills for c in row if c})
         return {
-            "sections": section_list(),
+            "sections": template.section_list(),
             "columns": [
                 {
                     "key": c.key, "section": c.section, "group": c.group, "label": c.label,
@@ -289,21 +293,23 @@ class DataImportService:
         }
 
     async def minsa_row(self, pregnancy_id: UUID, scope: Optional[Scope]) -> dict:
-        columns = build_columns(None)
         async with connection() as conn:
+            template = await minsaTemplateService.get(conn)
+            columns = template.build_columns(None)
             p = await pregnancyRepository.get_by_id(conn, pregnancy_id)
             if p is None or not in_scope(p.health_facility_id, scope):
                 raise NotFoundError("Registro de gestante no encontrado")
-            rows, fills = await self._minsa_rows(conn, [p], 0, columns)
+            rows, fills = await self._minsa_rows(conn, [p], 0, columns, template)
         return {"id": str(p.id), "code": p.code, "keys": [c.key for c in columns], "row": rows[0], "fills": fills[0]}
 
     async def export_minsa(self, f: PregnancyFilter, sections: Optional[set[str]]) -> tuple[bytes, int]:
-        columns = build_columns(sections)
         async with connection() as conn:
+            template = await minsaTemplateService.get(conn)
+            columns = template.build_columns(sections)
             items = await pregnancyRepository.get_all_unpaged(conn, f)
             if len(items) > MAX_ROWS:
                 raise ValidationError(f"Son {len(items)} registros: filtra para exportar como maximo {MAX_ROWS}")
-            rows, fills = await self._minsa_rows(conn, items, 0, columns)
+            rows, fills = await self._minsa_rows(conn, items, 0, columns, template)
         today = date.today().strftime("%d/%m/%Y")
         keep = {"n", "f:full_name", "f:dni"}
         marks = [

@@ -111,14 +111,17 @@ class AuthMiddleware(BaseHTTPMiddleware):
             scope=build_scope(row),
         )
 
-        if principal.must_change_password and request.url.path not in PASSWORD_CHANGE_PATHS:
+        restricted_path = request.url.path
+        if restricted_path == "/api/auth/me" and request.method != "GET":
+            restricted_path = "/api/auth/me:write"
+        if principal.must_change_password and restricted_path not in PASSWORD_CHANGE_PATHS:
             return error(403, "Debes cambiar tu contrasena temporal antes de continuar")
 
         if (
             config.mfa_required
             and row["role_name"] in config.mfa_roles
             and not row["mfa_enabled"]
-            and request.url.path not in MFA_SETUP_PATHS
+            and restricted_path not in MFA_SETUP_PATHS
         ):
             return error(403, "Tu rol exige la verificacion en dos pasos: activala para continuar")
 

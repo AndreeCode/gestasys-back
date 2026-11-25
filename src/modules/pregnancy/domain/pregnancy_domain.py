@@ -88,9 +88,17 @@ class PregnancyFilter:
     due_from: Optional[date] = None
     due_to: Optional[date] = None
     mark: Optional[str] = None
+    micro_network_id: Optional[UUID] = None
+    age_group: Optional[str] = None
+    insurance: Optional[str] = None
+    controls: Optional[str] = None
+    missed: Optional[bool] = None
+    created_from: Optional[date] = None
+    created_to: Optional[date] = None
 
     def args(self) -> list:
         return [
             self.q, self.health_facility_ids, self.status, self.risk_level, self.active, self.due_from, self.due_to,
-            self.mark,
+            self.mark, self.micro_network_id, self.age_group, self.insurance, self.controls, self.missed,
+            self.created_from, self.created_to,
         ]

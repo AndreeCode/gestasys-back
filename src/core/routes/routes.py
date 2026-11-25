@@ -5,6 +5,7 @@ from ...modules.auth.auth_route import router as auth_router
 from ...modules.backup.backup_route import router as backup_router
 from ...modules.dashboard.dashboard_route import router as dashboard_router
 from ...modules.data_import.data_import_route import router as data_import_router
+from ...modules.data_import.minsa_template_route import router as minsa_template_router
 from ...modules.device.device_route import router as device_router
 from ...modules.health_facility.health_facility_route import router as health_facility_router
 from ...modules.micro_network.micro_network_route import router as micro_network_router
@@ -28,6 +29,7 @@ router.include_router(health_facility_router)
 router.include_router(pregnancy_router)
 router.include_router(prenatal_control_router)
 router.include_router(data_import_router)
+router.include_router(minsa_template_router)
 router.include_router(backup_router)
 router.include_router(device_router)
 router.include_router(session_router)

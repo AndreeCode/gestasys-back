@@ -210,6 +210,22 @@ class UserService:
         async with transaction() as conn:
             await userRepository.update(conn, user)
 
+    async def update_own_profile(self, principal: Principal, data: dict[str, Any]) -> User:
+        user = await self.get_by_id(principal.user_id)
+        email = (data.get("email") or "").strip().lower()
+        if email and email != user.email:
+            if not data.get("current_password") or not verify_password(data["current_password"], user.password_hash):
+                raise BadRequestError("Para cambiar tu correo confirma tu contrasena actual")
+            user.email = email
+        if data.get("full_name") is not None:
+            user.full_name = clean(data["full_name"]) or ""
+        if "phone" in data:
+            user.phone = clean(data.get("phone"))
+        validate(user)
+        async with transaction() as conn:
+            await userRepository.update(conn, user)
+        return await self.get_by_id(principal.user_id)
+
     async def change_own_password(self, principal: Principal, current: str, new: str) -> None:
         user = await self.get_by_id(principal.user_id)
         if not verify_password(current, user.password_hash):

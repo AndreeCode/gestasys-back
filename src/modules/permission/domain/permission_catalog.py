@@ -23,6 +23,7 @@ PERMISSIONS: dict[str, str] = {
     "pregnancy.delete": "Eliminar registros de gestantes",
     "pregnancy.import": "Importar registros desde CSV o Excel (formato MINSA)",
     "pregnancy.export": "Exportar registros a CSV",
+    "minsa_template.put": "Editar el formato MINSA (columnas, nombres y colores)",
     "prenatal_control.get": "Consultar controles prenatales",
     "prenatal_control.post": "Registrar controles prenatales",
     "prenatal_control.put": "Editar controles prenatales",

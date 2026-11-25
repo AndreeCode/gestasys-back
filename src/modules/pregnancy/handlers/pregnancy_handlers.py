@@ -94,6 +94,13 @@ class PregnancySearchRequest(StrictModel):
     offset: int = Field(default=0, ge=0)
     delimiter: Optional[str] = None
     mark: Optional[Annotated[str, Field(pattern=r"^(any|none|[0-9A-Fa-f]{6})$")]] = None
+    micro_network_id: Optional[UUID] = None
+    age_group: Optional[Literal["teen", "adult", "older"]] = None
+    insurance: Optional[str] = Field(default=None, max_length=40)
+    controls: Optional[Literal["none", "lt6", "gte6"]] = None
+    missed: Optional[bool] = None
+    created_from: Optional[date] = None
+    created_to: Optional[date] = None
     sections: Optional[list[Annotated[str, Field(max_length=40, pattern=r"^[a-z0-9-]+$")]]] = Field(default=None, max_length=40)
 
 
@@ -107,6 +114,7 @@ def build_filter(
     due_to: Optional[date],
     scope: Optional[Scope] = None,
     mark: Optional[str] = None,
+    extra: Optional[dict] = None,
 ) -> PregnancyFilter:
     return PregnancyFilter(
         q=(q or "").strip() or None,
@@ -117,6 +125,7 @@ def build_filter(
         due_from=due_from,
         due_to=due_to,
         mark=(mark or "").strip().upper() or None if mark not in ("any", "none") else mark,
+        **{k: v for k, v in (extra or {}).items() if v not in (None, "")},
     )
 
 

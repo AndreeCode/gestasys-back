@@ -10,6 +10,7 @@ from .handlers.auth_handlers import (
     MfaDisableRequest,
     MfaLoginRequest,
     PasswordConfirmRequest,
+    ProfileUpdateRequest,
     authHandler,
 )
 
@@ -34,6 +35,11 @@ async def logout(request: Request):
 @router.get("/me")
 async def me(request: Request):
     return await authHandler.me(current_principal(request))
+
+
+@router.put("/me")
+async def update_me(request: Request, body: ProfileUpdateRequest):
+    return await authHandler.update_me(current_principal(request), body)
 
 
 @router.put("/password")

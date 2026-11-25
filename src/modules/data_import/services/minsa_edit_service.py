@@ -21,9 +21,8 @@ from ...prenatal_control.domain.prenatal_control_domain import PrenatalControl
 from ...prenatal_control.repositories.prenatal_control_repositories import prenatalControlRepository
 from ..domain.csv_format import fold
 from ..domain.minsa_format import clean_phone, parse_any_date, parse_formula, parse_weeks, split_name, item_label
-from ..domain.minsa_template import APN_COUNT, SECTION_COLUMNS, build_columns
-
-COLUMNS = {c.key: c for c in build_columns(None)}
+from ..domain.minsa_template import APN_COUNT, Template
+from .minsa_template_service import minsaTemplateService
 TEXT_FIELDS = {
     "f:address": ("address", None),
     "f:clinical_record": ("clinical_record", 30),
@@ -45,10 +44,10 @@ def _date(label: str, value: str, errors: list[str], required: bool = False) -> 
     return parsed
 
 
-def _apply_fields(p: Pregnancy, cells: dict[str, str], errors: list[str]) -> None:
+def _apply_fields(p: Pregnancy, cells: dict[str, str], errors: list[str], labels: dict[str, str]) -> None:
     for key, raw in cells.items():
         value = raw.strip()
-        label = COLUMNS[key].label
+        label = labels.get(key, key)
         if key == "f:full_name":
             first, last = split_name(value)
             if not first:
@@ -85,18 +84,14 @@ def _apply_fields(p: Pregnancy, cells: dict[str, str], errors: list[str]) -> Non
             setattr(p, attr, (value[:size] if size else value) or None)
 
 
-def _apply_clinical(p: Pregnancy, cells: dict[str, str]) -> Optional[tuple[bool, Optional[date]]]:
+def _apply_clinical(p: Pregnancy, cells: dict[str, str], template: Template) -> Optional[tuple[bool, Optional[date]]]:
     sections = [dict(s, items=list(s.get("items", []))) for s in (p.clinical_data or [])]
     termination = None
     for key, raw in cells.items():
-        index = int(key.split(":", 1)[1])
-        section, group, label = SECTION_COLUMNS[index]
-        target_label = item_label(section, group, label)
-        occurrence = sum(
-            1
-            for s, g, lab in SECTION_COLUMNS[: index + 1]
-            if fold(s) == fold(section) and fold(item_label(s, g, lab)) == fold(target_label)
-        )
+        definition = template.by_key[key]
+        section = definition.match_section or definition.section
+        target_label = definition.match_label or item_label(definition.section, definition.group, definition.label)
+        occurrence = definition.occ
         value = raw.strip()[:1000]
         block = next((s for s in sections if fold(s.get("section", "")) == fold(section)), None)
         if block is None:
@@ -195,7 +190,9 @@ class MinsaEditService:
     async def update_cells(
         self, pregnancy_id: UUID, cells: dict[str, str], scope: Optional[Scope], user_id: UUID, can_controls: bool
     ) -> None:
-        unknown = [k for k in cells if k not in COLUMNS or not COLUMNS[k].editable]
+        template = await minsaTemplateService.get()
+        columns = {c.key: c for c in template.build_columns(None)}
+        unknown = [k for k in cells if k not in columns or not columns[k].editable]
         if unknown:
             raise ValidationError(f"Estas columnas no se editan aqui: {', '.join(unknown[:5])}")
         groups = {
@@ -211,8 +208,8 @@ class MinsaEditService:
             p = await pregnancyRepository.get_by_id(conn, pregnancy_id)
             if p is None or not p.active or not in_scope(p.health_facility_id, scope):
                 raise NotFoundError("Registro de gestante no encontrado")
-            _apply_fields(p, groups["f"], errors)
-            termination = _apply_clinical(p, groups["c"]) if groups["c"] else None
+            _apply_fields(p, groups["f"], errors, {k: c.label for k, c in columns.items()})
+            termination = _apply_clinical(p, groups["c"], template) if groups["c"] else None
             if termination:
                 _, delivered = termination
                 if delivered:

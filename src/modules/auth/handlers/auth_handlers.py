@@ -1,3 +1,4 @@
+from typing import Optional
 import math
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
@@ -38,6 +39,13 @@ from .login_rate_limiter import allow_login_attempt, register_unknown_login_fail
 class LoginRequest(StrictModel):
     username: str = Field(min_length=1, max_length=255)
     password: str = Field(min_length=1, max_length=128)
+
+
+class ProfileUpdateRequest(StrictModel):
+    full_name: Optional[str] = Field(default=None, min_length=3, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=255)
+    phone: Optional[str] = Field(default=None, max_length=30)
+    current_password: Optional[str] = Field(default=None, max_length=128)
 
 
 class MfaLoginRequest(StrictModel):
@@ -248,6 +256,13 @@ class AuthHandler:
             principal.user_id, {"session_id": principal.session_id, "device_id": principal.device_id}
         )
         return success(200, "Usuario actual obtenido correctamente", profile)
+
+    async def update_me(self, principal: Principal, body: "ProfileUpdateRequest"):
+        await userService.update_own_profile(principal, body.model_dump(exclude_unset=True))
+        profile = await build_profile(
+            principal.user_id, {"session_id": principal.session_id, "device_id": principal.device_id}
+        )
+        return success(200, "Tus datos se actualizaron correctamente", profile)
 
     async def change_password(self, principal: Principal, body: ChangePasswordRequest):
         await userService.change_own_password(principal, body.current_password, body.new_password)

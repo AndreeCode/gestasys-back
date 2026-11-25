@@ -1,5 +1,5 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Callable, Optional
 
@@ -309,6 +309,7 @@ HEADER_FILLS: list[tuple[Optional[str], Optional[str], Optional[str]]] = [
 
 NOT_EDITABLE = {"n", "f:renaes", "f:micro_network", "f:facility", "f:age", "other"}
 MARKS_FILL = ("6B7280", "9CA3AF", "D1D5DB")
+KIND_ORDER = {"id": 0, "fixed": 1, "apn": 2, "clinical": 3, "custom": 3}
 
 
 @dataclass(frozen=True)
@@ -323,6 +324,32 @@ class Column:
     @property
     def editable(self) -> bool:
         return self.key not in NOT_EDITABLE and not self.key.startswith("m:")
+
+
+@dataclass
+class TemplateColumn:
+    """Definicion editable de una columna del formato (una fila de minsa_columns)."""
+
+    key: str
+    kind: str
+    position: int
+    section: str
+    group: str
+    label: str
+    width: int = 14
+    visible: bool = True
+    fills: tuple[Optional[str], Optional[str], Optional[str]] = (None, None, None)
+    aliases: list[str] = field(default_factory=list)
+    match_section: Optional[str] = None
+    match_label: Optional[str] = None
+    occ: int = 1
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.key, "kind": self.kind, "position": self.position, "section": self.section,
+            "group": self.group, "label": self.label, "width": self.width, "visible": self.visible,
+            "fills": list(self.fills), "aliases": list(self.aliases), "builtin": self.kind != "custom",
+        }
 
 
 def header_fill(position: int) -> tuple[Optional[str], Optional[str], Optional[str]]:
@@ -356,6 +383,7 @@ FIXED: list[tuple[str, str, int, Callable]] = [
     ("lmp", "FUM (dd/mm/aa)", 12, lambda p: fmt(p.get("last_menstrual_period"))),
     ("edd", "FPP (dd/mm/aa)", 12, lambda p: fmt(p.get("expected_delivery_date"))),
 ]
+GETTERS = {f"f:{key}": getter for key, _, _, getter in FIXED}
 
 APN_PARTS: list[tuple[str, str, int]] = [
     ("date", "Fecha de Control (dd/mm/aa)", 12),
@@ -365,60 +393,133 @@ APN_PARTS: list[tuple[str, str, int]] = [
     ("performed_at", "EE.SS QUE REALIZO LA APN", 16),
     ("next", "Cita (dd/mm/aa)", 12),
 ]
+APN_PART_KEYS = [part for part, _, _ in APN_PARTS]
 
 
-def section_list() -> list[dict]:
-    out = [
-        {"id": "datos", "title": "Datos de la gestante y embarazo", "fixed": True},
-        {"id": "apn", "title": "Atenciones prenatales (13 APN)"},
-    ]
-    seen: set[str] = set()
-    for section, _, _ in SECTION_COLUMNS:
-        sid = slug(section)
-        if sid not in seen:
-            seen.add(sid)
-            out.append({"id": sid, "title": section.capitalize() if section.isupper() else section})
-    out.append({"id": "otros", "title": "Otros datos"})
-    out.append({"id": "marcas", "title": "Marcas de color (0/1)"})
-    return out
-
-
-def build_columns(selected: Optional[set[str]] = None) -> list[Column]:
-    want = lambda sid: selected is None or sid in selected
-    columns: list[Column] = [Column("n", IDENTITY_SECTION, "", "Nº", 5, header_fill(0))]
+def default_template() -> list["TemplateColumn"]:
+    """Formato original (Excel MINSA de seguimiento de gestantes), usado mientras minsa_columns este vacia."""
+    out = [TemplateColumn("n", "id", 0, IDENTITY_SECTION, "", "Nº", 5, fills=header_fill(0))]
     for i, (key, label, width, _) in enumerate(FIXED, start=1):
         section = PREGNANCY_SECTION if key in ("formula", "lmp", "edd") else IDENTITY_SECTION
-        columns.append(Column(f"f:{key}", section, "", label, width, header_fill(i)))
+        out.append(TemplateColumn(f"f:{key}", "fixed", i, section, "", label, width, fills=header_fill(i)))
     apn_start = 1 + len(FIXED)
-    if want("apn"):
-        for n in range(1, APN_COUNT + 1):
-            for j, (part, label, width) in enumerate(APN_PARTS):
-                position = apn_start + (n - 1) * len(APN_PARTS) + j
-                columns.append(Column(f"apn:{n}:{part}", APN_SECTION, f"{ORDINALS[n - 1]} APN", label, width, header_fill(position)))
+    for j, (part, label, width) in enumerate(APN_PARTS):
+        out.append(TemplateColumn(f"apn:{part}", "apn", apn_start + j, APN_SECTION, "", label, width, fills=header_fill(apn_start + j)))
     clinical_start = apn_start + APN_COUNT * len(APN_PARTS)
-    for index, (section, group, label) in enumerate(SECTION_COLUMNS):
-        if want(slug(section)):
-            columns.append(Column(f"c:{index}", section, group, label, 14, header_fill(clinical_start + index)))
-    if want("otros"):
-        columns.append(Column("other", "OTROS DATOS", "", "Datos sin columna en el formato", 30))
-    if want("marcas"):
-        columns.append(Column("m:row", MARKS_SECTION, "Fila pintada en el Excel", "Fila marcada (1 = pintada, 0 = sin color)", 12, MARKS_FILL))
-        columns.append(Column("m:color", MARKS_SECTION, "Fila pintada en el Excel", "Color de la fila", 12, MARKS_FILL))
-        columns.append(Column("m:cells", MARKS_SECTION, "Celdas pintadas distinto a su fila", "Cantidad de celdas marcadas", 12, MARKS_FILL))
-    return columns
-
-
-def clinical_index() -> dict[tuple[str, str, int], int]:
-    out: dict[tuple[str, str, int], int] = {}
     seen: dict[tuple[str, str], int] = {}
     for index, (section, group, label) in enumerate(SECTION_COLUMNS):
-        key = (fold(section), fold(item_label(section, group, label)))
-        seen[key] = seen.get(key, 0) + 1
-        out[(*key, seen[key])] = index
+        match = item_label(section, group, label)
+        k = (fold(section), fold(match))
+        seen[k] = seen.get(k, 0) + 1
+        out.append(
+            TemplateColumn(
+                f"c:{index}", "clinical", clinical_start + index, section, group, label, 14,
+                fills=header_fill(clinical_start + index), match_section=section, match_label=match, occ=seen[k],
+            )
+        )
     return out
 
 
-CLINICAL_INDEX = clinical_index()
+class Template:
+    def __init__(self, defs: list[TemplateColumn]):
+        self.defs = sorted(defs, key=lambda d: (KIND_ORDER.get(d.kind, 3), d.position))
+        self.by_key = {d.key: d for d in self.defs}
+        self.index: dict[tuple[str, str, int], str] = {}
+        for d in self.defs:
+            if d.kind not in ("clinical", "custom"):
+                continue
+            sections = {fold(d.match_section or d.section), fold(d.section)}
+            labels = {fold(d.match_label or item_label(d.section, d.group, d.label)), fold(item_label(d.section, d.group, d.label))}
+            labels |= {fold(a) for a in d.aliases if a}
+            for sec in sections:
+                for lab in labels:
+                    self.index.setdefault((sec, lab, d.occ), d.key)
+
+    def section_list(self) -> list[dict]:
+        out = [
+            {"id": "datos", "title": "Datos de la gestante y embarazo", "fixed": True},
+            {"id": "apn", "title": "Atenciones prenatales (13 APN)"},
+        ]
+        seen: set[str] = set()
+        for d in self.defs:
+            if d.kind in ("clinical", "custom") and d.visible:
+                sid = slug(d.section)
+                if sid not in seen:
+                    seen.add(sid)
+                    out.append({"id": sid, "title": d.section.capitalize() if d.section.isupper() else d.section})
+        out.append({"id": "otros", "title": "Otros datos"})
+        out.append({"id": "marcas", "title": "Marcas de color (0/1)"})
+        return out
+
+    def build_columns(self, selected: Optional[set[str]] = None) -> list[Column]:
+        want = lambda sid: selected is None or sid in selected
+        columns: list[Column] = []
+        apn_parts = [d for d in self.defs if d.kind == "apn" and d.visible]
+        apn_done = False
+        for d in self.defs:
+            if not d.visible:
+                continue
+            if d.kind in ("id", "fixed"):
+                columns.append(Column(d.key, d.section, d.group, d.label, d.width, d.fills))
+            elif d.kind == "apn":
+                if apn_done or not want("apn"):
+                    continue
+                apn_done = True
+                for n in range(1, APN_COUNT + 1):
+                    for part in apn_parts:
+                        name = part.key.split(":", 1)[1]
+                        group = part.group or f"{ORDINALS[n - 1]} APN"
+                        columns.append(Column(f"apn:{n}:{name}", part.section, group, part.label, part.width, part.fills))
+            elif want(slug(d.section)):
+                columns.append(Column(d.key, d.section, d.group, d.label, d.width, d.fills))
+        if want("otros"):
+            columns.append(Column("other", "OTROS DATOS", "", "Datos sin columna en el formato", 30))
+        if want("marcas"):
+            columns.append(Column("m:row", MARKS_SECTION, "Fila pintada en el Excel", "Fila marcada (1 = pintada, 0 = sin color)", 12, MARKS_FILL))
+            columns.append(Column("m:color", MARKS_SECTION, "Fila pintada en el Excel", "Color de la fila", 12, MARKS_FILL))
+            columns.append(Column("m:cells", MARKS_SECTION, "Celdas pintadas distinto a su fila", "Cantidad de celdas marcadas", 12, MARKS_FILL))
+        return columns
+
+    def clinical_positions(self, p: dict):
+        seen: dict[tuple[str, str], int] = {}
+        for section in p.get("clinical_data") or []:
+            for item in section.get("items", []):
+                key = (fold(section.get("section", "")), fold(item.get("label", "")))
+                seen[key] = seen.get(key, 0) + 1
+                yield section, item, self.index.get((*key, item.get("occ") or seen[key]))
+
+    def cell_marks(self, p: dict) -> dict[str, str]:
+        marks = dict(p.get("cell_marks") or {})
+        for _, item, key in self.clinical_positions(p):
+            if key is not None and item.get("color"):
+                marks[key] = item["color"]
+        return marks
+
+    def row_values(self, index: int, p: dict, controls: list[dict], columns: list[Column]) -> list[str]:
+        values: dict[str, str] = {"n": str(index)}
+        for key, getter in GETTERS.items():
+            values[key] = getter(p)
+        values.update(control_values(controls))
+        others: list[str] = []
+        for section, item, key in self.clinical_positions(p):
+            if key is not None and self.by_key[key].visible:
+                values[key] = str(item.get("value", ""))
+            elif item.get("value"):
+                others.append(f"{section.get('section', '')}: {item.get('label', '')} = {item.get('value', '')}")
+        values["other"] = " | ".join(others)
+        marks = self.cell_marks(p)
+        values["m:row"] = "1" if p.get("row_color") else "0"
+        values["m:color"] = color_name(p.get("row_color")) or ""
+        values["m:cells"] = str(len(marks))
+        return [values.get(c.key, "") for c in columns]
+
+    def row_fills(self, p: dict, columns: list[Column]) -> list[Optional[str]]:
+        marks = self.cell_marks(p)
+        base = p.get("row_color")
+        return [None if c.key.startswith("m:") else marks.get(c.key, base) for c in columns]
+
+
+DEFAULT_TEMPLATE = Template(default_template())
 
 
 def control_values(controls: list[dict]) -> dict[str, str]:
@@ -452,45 +553,3 @@ def _apn(n: int, c: dict) -> dict[str, str]:
         f"apn:{n}:performed_at": c.get("performed_at") or "",
         f"apn:{n}:next": fmt(c.get("next_appointment")),
     }
-
-
-def row_values(index: int, p: dict, controls: list[dict], columns: list[Column]) -> list[str]:
-    values: dict[str, str] = {"n": str(index)}
-    for key, _, _, getter in FIXED:
-        values[f"f:{key}"] = getter(p)
-    values.update(control_values(controls))
-    others: list[str] = []
-    for section, item, pos in clinical_positions(p):
-        if pos is not None:
-            values[f"c:{pos}"] = str(item.get("value", ""))
-        elif item.get("value"):
-            others.append(f"{section.get('section', '')}: {item.get('label', '')} = {item.get('value', '')}")
-    values["other"] = " | ".join(others)
-    marks = cell_marks(p)
-    values["m:row"] = "1" if p.get("row_color") else "0"
-    values["m:color"] = color_name(p.get("row_color")) or ""
-    values["m:cells"] = str(len(marks))
-    return [values.get(c.key, "") for c in columns]
-
-
-def clinical_positions(p: dict):
-    seen: dict[tuple[str, str], int] = {}
-    for section in p.get("clinical_data") or []:
-        for item in section.get("items", []):
-            key = (fold(section.get("section", "")), fold(item.get("label", "")))
-            seen[key] = seen.get(key, 0) + 1
-            yield section, item, CLINICAL_INDEX.get((*key, item.get("occ") or seen[key]))
-
-
-def cell_marks(p: dict) -> dict[str, str]:
-    marks = dict(p.get("cell_marks") or {})
-    for _, item, pos in clinical_positions(p):
-        if pos is not None and item.get("color"):
-            marks[f"c:{pos}"] = item["color"]
-    return marks
-
-
-def row_fills(p: dict, columns: list[Column]) -> list[Optional[str]]:
-    marks = cell_marks(p)
-    base = p.get("row_color")
-    return [None if c.key.startswith("m:") else marks.get(c.key, base) for c in columns]
