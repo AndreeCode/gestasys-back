@@ -72,6 +72,13 @@ class DataImportHandler:
         row = await dataImportService.minsa_row(pid, scope)
         return success(200, f"Registro {row['code']} actualizado ({len(cells)} celdas)", row)
 
+    async def create_minsa(
+        self, cells: dict[str, str], facility_id: Optional[UUID], scope: Optional[Scope], user_id: UUID, can_controls: bool
+    ):
+        pid = await minsaEditService.create_from_cells(dict(cells), facility_id, scope, user_id, can_controls)
+        row = await dataImportService.minsa_row(pid, scope)
+        return success(201, f"Registro {row['code']} creado con el formato MINSA", row)
+
     def template(self):
         return Response(
             content=dataImportService.template_csv(),

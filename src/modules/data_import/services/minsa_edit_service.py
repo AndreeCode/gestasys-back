@@ -16,7 +16,9 @@ from ...pregnancy.domain.pregnancy_domain import (
     Pregnancy,
 )
 from ...pregnancy.repositories.pregnancy_repositories import pregnancyRepository
-from ...pregnancy.services.pregnancy_service import normalize, validate
+from ...health_facility.services.health_facility_service import healthFacilityService
+from ...pregnancy.services.pregnancy_service import ensure_no_open_duplicate, ensure_scope, normalize, validate
+from .minsa_import_service import estimate_birth_date
 from ...prenatal_control.domain.prenatal_control_domain import PrenatalControl
 from ...prenatal_control.repositories.prenatal_control_repositories import prenatalControlRepository
 from ..domain.csv_format import fold
@@ -230,6 +232,61 @@ class MinsaEditService:
                     count = await conn.fetchval("SELECT count(*) FROM prenatal_controls WHERE pregnancy_id = $1", p.id)
                     if count:
                         await pregnancyRepository.set_status(conn, p.id, STATUS_IN_FOLLOWUP)
+
+
+    async def create_from_cells(
+        self,
+        cells: dict[str, str],
+        facility_id: Optional[UUID],
+        scope: Optional[Scope],
+        user_id: UUID,
+        can_controls: bool,
+    ) -> UUID:
+        template = await minsaTemplateService.get()
+        columns = {c.key: c for c in template.build_columns(None)}
+        age = cells.pop("f:age", "").strip()
+        unknown = [k for k in cells if k not in columns or not columns[k].editable]
+        if unknown:
+            raise ValidationError(f"Estas columnas no se registran aqui: {', '.join(unknown[:5])}")
+        groups = {
+            "f": {k: v for k, v in cells.items() if k.startswith("f:")},
+            "apn": {k: v for k, v in cells.items() if k.startswith("apn:") and v.strip()},
+            "c": {k: v for k, v in cells.items() if k.startswith("c:") and v.strip()},
+        }
+        if groups["apn"] and not can_controls:
+            raise ForbiddenError("No tienes permiso para registrar controles prenatales")
+        if not groups["f"].get("f:full_name", "").strip():
+            raise ValidationError("APELLIDOS Y NOMBRES es obligatorio")
+
+        errors: list[str] = []
+        p = Pregnancy(id=None, first_names="", last_names="", birth_date=None, health_facility_id=facility_id, registered_by=user_id)
+        ensure_scope(p, scope)
+        _apply_fields(p, {k: v for k, v in groups["f"].items() if v.strip() or k == "f:full_name"}, errors, {k: c.label for k, c in columns.items()})
+        if p.birth_date is None and not errors:
+            estimated = estimate_birth_date(age, date.today()) if age else None
+            if estimated is None:
+                errors.append("Indica la FECHA DE NACIMIENTO o la EDAD")
+            else:
+                p.birth_date, p.birth_date_estimated = estimated, True
+        termination = _apply_clinical(p, groups["c"], template) if groups["c"] else None
+        if termination and termination[1]:
+            p.status, p.delivery_date = STATUS_COMPLETED, termination[1]
+        if errors:
+            raise ValidationError(errors)
+        p.source = "manual"
+        async with transaction() as conn:
+            normalize(p)
+            validate(p)
+            await healthFacilityService.ensure_active(conn, p.health_facility_id)
+            await ensure_no_open_duplicate(conn, p, scope)
+            p.id = await pregnancyRepository.create(conn, p)
+            if groups["apn"]:
+                await _apply_controls(conn, p, groups["apn"], user_id, errors)
+                if errors:
+                    raise ValidationError(errors)
+                if p.status == STATUS_PENDING:
+                    await pregnancyRepository.set_status(conn, p.id, STATUS_IN_FOLLOWUP)
+        return p.id
 
 
 minsaEditService = MinsaEditService()

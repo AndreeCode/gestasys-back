@@ -82,6 +82,13 @@ class MinsaCellsRequest(StrictModel):
     )
 
 
+class MinsaCreateRequest(StrictModel):
+    health_facility_id: Optional[UUID] = None
+    cells: dict[Annotated[str, Field(max_length=40, pattern=r"^(f|c|apn):[a-z0-9_:]+$")], Annotated[str, Field(max_length=1000)]] = Field(
+        min_length=1, max_length=400
+    )
+
+
 class PregnancySearchRequest(StrictModel):
     q: Optional[str] = Field(default=None, max_length=120)
     health_facility_id: Optional[str] = None

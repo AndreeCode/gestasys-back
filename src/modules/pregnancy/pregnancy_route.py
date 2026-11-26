@@ -12,6 +12,7 @@ from ..data_import.handlers.data_import_handlers import dataImportHandler
 from ...core.security.permissions import user_has_permission
 from .handlers.pregnancy_handlers import (
     MinsaCellsRequest,
+    MinsaCreateRequest,
     PregnancyCreateRequest,
     PregnancySearchRequest,
     PregnancyUpdateRequest,
@@ -86,6 +87,13 @@ async def export_pregnancies(f=Depends(pregnancy_filter), delimiter: Optional[st
 )
 async def export_pregnancies_minsa(body: PregnancySearchRequest, scope: Optional[Scope] = Depends(facility_scope)):
     return await dataImportHandler.export_minsa(body_filter(body, scope), body.sections)
+
+
+@router.post("/minsa/new", dependencies=[Depends(require_permission("pregnancy.post"))])
+async def create_pregnancy_minsa(request: Request, body: MinsaCreateRequest, scope: Optional[Scope] = Depends(facility_scope)):
+    principal = current_principal(request)
+    can_controls = await user_has_permission(principal.user_id, "prenatal_control.post")
+    return await dataImportHandler.create_minsa(body.cells, body.health_facility_id, scope, principal.user_id, can_controls)
 
 
 @router.post("/minsa", dependencies=[Depends(require_permission("pregnancy.get"))])
